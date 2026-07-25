@@ -17,6 +17,7 @@
   (str "tamaki — one CLI for Kotoba agent execution\n\n"
        "Usage:\n"
        "  tamaki submit <goal> --project PATH [--mode local|fleet] [options]\n"
+       "  tamaki exec <goal> --project PATH -- <command> [args...]\n"
        "  tamaki run <run-id>\n"
        "  tamaki status [run-id]\n"
        "  tamaki resume <run-id>\n"
@@ -38,10 +39,16 @@
        "  --requires git,nbb,clojure --parent RUN-ID --execute\n"))
 
 (defn parse-args
+  "A bare `--` ends option parsing: everything after it is returned verbatim as
+   `:command`, so `tamaki exec ... -- nbb script.cljs --depth 2` passes the
+   subprocess's own flags through instead of swallowing them as tamaki options."
   [args]
   (loop [xs args positional [] options {}]
-    (if (empty? xs)
-      {:positional positional :options options}
+    (cond
+      (empty? xs) {:positional positional :options options :command []}
+      (= "--" (first xs)) {:positional positional :options options
+                           :command (vec (rest xs))}
+      :else
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
           (if (contains? #{"--execute" "--approve" "--auto-approve"} x)
@@ -716,6 +723,7 @@
         parsed (parse-args rest)]
     (case command
       "submit" (or (submit! parsed) 0)
+      "exec" (exec! parsed)
       "run" (execute-run! (run-by-id (first (:positional parsed))))
       "status" (do (status! (first (:positional parsed))) 0)
       "resume" (resume! (first (:positional parsed)))

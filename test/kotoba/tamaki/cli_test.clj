@@ -161,3 +161,56 @@
                   store/backend (constantly :file)]
       (is (= "commit-1" (cli/patch-commit-id "run-1" "patch-1")))
       (is (nil? (cli/patch-commit-id "run-2" "patch-1"))))))
+
+(deftest exec-registers-a-deterministic-run
+  (testing "a resident tick's own command is recorded as a real AgentRun, without pretending a model ran it"
+    (let [root (temp-root)
+          seen (atom nil)]
+      (with-redefs [store/default-root (constantly root)
+                    adapters/readiness (constantly {:tamaki {:ok? true}
+                                                    :event-store {:ok? true}})
+                    adapters/execute! (fn [argv cwd] (reset! seen {:argv argv :cwd cwd}) 0)]
+        (let [{:keys [exit value]} (call ["exec" "one innen ingest tick"
+                                          "--project" "/tmp/loop-innen"
+                                          "--" "nbb" "scripts/tick.cljs" "--depth" "2"])]
+          (is (zero? exit))
+          (testing "everything after `--` reaches the subprocess verbatim, flags included"
+            (is (= ["nbb" "scripts/tick.cljs" "--depth" "2"] (:argv @seen))))
+          (testing "and it runs in --project"
+            (is (= "/tmp/loop-innen" (:cwd @seen))))
+          (is (= :succeeded (:agent.run/status value)))
+          (is (= :external (:agent.run/mode value)))
+          (testing "the durable lifecycle is the same one every other run emits"
+            (is (= [:run/submitted :run/leased :run/started :run/succeeded]
+                   (event-kinds root)))))))))
+
+(deftest exec-reports-failure-honestly
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  adapters/readiness (constantly {:tamaki {:ok? true} :event-store {:ok? true}})
+                  adapters/execute! (constantly 3)]
+      (let [{:keys [exit value]} (call ["exec" "failing tick" "--project" "/tmp/x"
+                                        "--" "false"])]
+        (testing "the subprocess exit code is the command's exit code, so launchd sees the truth"
+          (is (= 3 exit))
+          (is (= 3 (:agent.run/exit value)))
+          (is (= :failed (:agent.run/status value))))
+        (is (= [:run/submitted :run/leased :run/started :run/failed] (event-kinds root)))))))
+
+(deftest exec-refuses-incomplete-invocations
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  adapters/readiness (constantly {:tamaki {:ok? true} :event-store {:ok? true}})]
+      (testing "no command after `--` is a refusal, not an empty run"
+        (is (thrown? Exception (cli/dispatch ["exec" "goal" "--project" "/tmp/x"]))))
+      (testing "no --project is a refusal: a deterministic tick must say where it runs"
+        (is (thrown? Exception (cli/dispatch ["exec" "goal" "--" "true"]))))
+      (testing "nothing was recorded by either refusal"
+        (is (empty? (event-kinds root)))))))
+
+(deftest external-mode-does-not-require-kotoba-code
+  (testing ":external gates on the event store alone — a data tick has no model in it"
+    (is (true? (adapters/ready-for? :external {:tamaki {:ok? true} :event-store {:ok? true}})))
+    (is (false? (adapters/ready-for? :external {:tamaki {:ok? true} :event-store {:ok? false}})))
+    (testing "and local mode still demands kotoba-code"
+      (is (false? (adapters/ready-for? :local {:bb {:ok? true} :kotoba-code {:ok? false}}))))))

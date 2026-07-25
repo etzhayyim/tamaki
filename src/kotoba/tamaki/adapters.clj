@@ -105,6 +105,11 @@
           (map report
                (case mode
                  :fleet [:nbb :kotoba-fleet :murakumo]
+                 ;; :external runs a deterministic command the caller supplies
+                 ;; (an ingest tick, a scheduled report). It needs the durable
+                 ;; event store and nothing else -- gating it on kotoba-code
+                 ;; would demand a model that is not in the loop.
+                 :external [:tamaki :event-store]
                  [:bb :kotoba-code]))))
 
 (def ^:dynamic *process-env* {})

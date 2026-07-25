@@ -50,6 +50,26 @@ bin/tamaki contract
 `submit` is safe by default: it only appends a queued run. Add `--execute` or
 invoke `run` separately to cross the execution boundary.
 
+`exec` is for **deterministic** work — an ingest tick, a scheduled report — where
+there is no model in the loop:
+
+```sh
+bin/tamaki exec "innen record tick 2026-07-25" \
+  --project /path/to/loop-innen \
+  -- nbb --classpath "../innen/src:src:scripts" scripts/tick.cljs --depth 2
+```
+
+Everything after `--` is the caller's own argv, run in `--project`, and recorded
+with the same lifecycle every other run emits (`submitted -> leased -> started ->
+succeeded|failed`) carrying the real `:agent.run/command` and exit code. Mode is
+`:external`, which `doctor` gates on the event store alone — a deterministic tick
+needs neither `kotoba-code` nor a fleet node. The subprocess's exit code becomes
+`exec`'s exit code, so launchd/cron sees the truth without parsing output.
+
+`local` mode always hands the goal to `kotoba-code`, i.e. to a model. Recording a
+data tick that way would claim an agent did work it did not do; `exec` exists so
+residents can register real runs honestly.
+
 `nodes` and `tick` delegate to `kotoba-fleet`; `infer` and `murakumo` delegate
 to the existing Murakumo operators. Their remaining arguments pass through
 unchanged, so Tamaki stays one operator entry point without forking those
