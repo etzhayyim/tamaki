@@ -52,10 +52,21 @@
   (let [f (event-file root)]
     (if-not (.exists f)
       []
-      (with-open [r (io/reader f)]
-        (->> (line-seq r)
-             (remove str/blank?)
-             (mapv edn/read-string))))))
+      (let [lines (->> (str/split-lines (slurp f))
+                       (remove str/blank?)
+                       vec)]
+        (reduce-kv
+         (fn [events index line]
+           (try
+             (conj events (edn/read-string line))
+             (catch Exception error
+               ;; An interrupted append may leave only the final EDN line
+               ;; incomplete. Keep committed events but expose older damage.
+               (if (= index (dec (count lines)))
+                 events
+                 (throw error)))))
+         []
+         lines)))))
 
 (defn append-local-event!
   [root event]

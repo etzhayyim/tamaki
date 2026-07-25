@@ -40,3 +40,20 @@
     (is (thrown-with-msg? Exception #"Kotobase XRPC"
                           (store/append-kotobase-event!
                            config {:tamaki.event/id "e1"})))))
+
+(deftest local-read-recovers-from-an-incomplete-tail
+  (let [root (.toFile (java.nio.file.Files/createTempDirectory
+                       "tamaki-store-test"
+                       (make-array java.nio.file.attribute.FileAttribute 0)))
+        event {:tamaki.event/id "e1" :tamaki.event/at 1}]
+    (spit (store/event-file root) (str (pr-str event) "\n{:incomplete"))
+    (is (= [event] (store/read-local-events root)))))
+
+(deftest local-read-rejects-corruption-before-the-tail
+  (let [root (.toFile (java.nio.file.Files/createTempDirectory
+                       "tamaki-store-test"
+                       (make-array java.nio.file.attribute.FileAttribute 0)))
+        event {:tamaki.event/id "e1" :tamaki.event/at 1}]
+    (spit (store/event-file root)
+          (str "{:corrupt\n" (pr-str event) "\n"))
+    (is (thrown? Exception (store/read-local-events root)))))
