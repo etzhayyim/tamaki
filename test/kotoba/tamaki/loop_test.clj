@@ -61,6 +61,18 @@
                        (loop/loop-event campaign kind 3 {}))]
         (is (nil? (:tamaki.loop/last-error recovered)))))))
 
+(deftest completion-records-stop-reason-and-clears-in-flight-cycle
+  (let [campaign (assoc (loop/campaign {:objective "operate safely"
+                                        :project "/repo"} 1)
+                        :tamaki.loop/current-cycle 2)
+        completed (loop/apply-event
+                   campaign
+                   (loop/loop-event campaign :loop/completed 3
+                                    {:reason :max-failures}))]
+    (is (= :completed (:tamaki.loop/status completed)))
+    (is (= :max-failures (:tamaki.loop/stop-reason completed)))
+    (is (nil? (:tamaki.loop/current-cycle completed)))))
+
 (deftest campaign-rejects-invalid-bounds
   (doseq [[field value]
           [[:max-cycles 0]

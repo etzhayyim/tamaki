@@ -94,6 +94,63 @@
     (when (:execute options)
       (execute-run! run))))
 
+(defn exec!
+  "Register and run a DETERMINISTIC command as an AgentRun.
+
+     tamaki exec <goal> --project PATH -- <command> [args...]
+
+   `local` mode always hands the goal to `kotoba-code`, i.e. to a model. A
+   resident data loop (an ingest tick, a scheduled report) has no model in it
+   and must not be recorded as if it did -- so `exec` runs the caller's own
+   argv, in `--project`, and records the same lifecycle events every other run
+   emits: submitted -> leased -> started -> succeeded|failed, carrying the real
+   `:agent.run/command` and exit code.
+
+   Mode is `:external`, which `adapters/ready-for?` gates on the event store
+   alone (a deterministic tick needs neither kotoba-code nor a fleet node). The
+   subprocess's exit code is this command's exit code, so launchd / cron sees
+   the truth without parsing output."
+  [{:keys [positional options command]}]
+  (let [goal (first positional)
+        project (:project options)]
+    (when (str/blank? goal)
+      (throw (ex-info "tamaki exec requires a goal" {})))
+    (when (empty? command)
+      (throw (ex-info "tamaki exec requires a command after `--`"
+                      {:usage "tamaki exec <goal> --project PATH -- <command> [args...]"})))
+    (when (str/blank? project)
+      (throw (ex-info "tamaki exec requires --project PATH" {})))
+    (let [run (model/agent-run
+               {:goal goal
+                :project project
+                :repo (:repo options)
+                :mode :external
+                :model nil
+                :capabilities (if-let [r (:requires options)]
+                                (set (map keyword (remove str/blank? (str/split r #","))))
+                                #{})
+                :parent (:parent options)}
+               (now))
+          report (adapters/readiness)]
+      (when-not (adapters/ready-for? :external report)
+        (throw (ex-info "Runtime is not ready" {:mode :external :doctor report})))
+      (emit! run :run/submitted {:run run})
+      (let [worker (or (System/getenv "TAMAKI_WORKER_ID")
+                       (.getHostName (java.net.InetAddress/getLocalHost)))
+            leased (model/transition run :leased (now) {:agent.run/worker worker})
+            _ (emit! run :run/leased {:agent.run/worker worker})
+            argv (vec command)
+            _ (emit! leased :run/started {:agent.run/command argv})
+            exit (adapters/execute! argv project)
+            kind (if (zero? exit) :run/succeeded :run/failed)
+            result {:agent.run/exit exit :agent.run/command argv}]
+        (emit! (assoc leased :agent.run/status :running) kind result)
+        (print-edn (assoc result
+                          :agent.run/id (:agent.run/id run)
+                          :agent.run/mode :external
+                          :agent.run/status (if (zero? exit) :succeeded :failed)))
+        exit))))
+
 (defn write-work! [run]
   (let [dir (io/file (store/default-root) "work")
         f (io/file dir (str (:agent.run/id run) ".edn"))]

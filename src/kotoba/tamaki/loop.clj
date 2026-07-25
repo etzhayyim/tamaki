@@ -87,8 +87,11 @@
                                       :tamaki.loop/updated-at at))
       :loop/paused (assoc state :tamaki.loop/status :paused
                          :tamaki.loop/updated-at at)
-      :loop/completed (assoc state :tamaki.loop/status :completed
-                            :tamaki.loop/updated-at at)
+      :loop/completed (-> state
+                          (dissoc :tamaki.loop/current-cycle)
+                          (assoc :tamaki.loop/status :completed
+                                 :tamaki.loop/stop-reason (:reason data)
+                                 :tamaki.loop/updated-at at))
       state)))
 
 (defn campaigns [events]
