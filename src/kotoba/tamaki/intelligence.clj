@@ -70,7 +70,7 @@
    "All documented deterministic test suites pass"
    "No paths outside the selected issue scope are changed"
    "An independent review AgentRun observes the patch without modifying it"
-   "The canonical Radicle branch contains the reviewed commit"])
+   "The reviewed commit descends from the canonical base and is fast-forwardable"])
 
 (defn dynamics-signals [{:keys [failures max-failures active-runs open-issues]}]
   {:feedback-pressure (normalize (/ (double failures)
@@ -89,6 +89,12 @@
                           (or (> (or (:tests after) 0) (or (:tests before) 0))
                               (> (or (:assertions after) 0)
                                  (or (:assertions before) 0))))})
+
+(defn valid-review-verdict? [verdict commit-id]
+  (and (map? verdict)
+       (= :accepted (:review/verdict verdict))
+       (= commit-id (:review/commit verdict))
+       (seq (:review/evidence verdict))))
 
 (defn parse-issue-list [output]
   (->> (str/split-lines (or output ""))

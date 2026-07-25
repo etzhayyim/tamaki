@@ -41,3 +41,18 @@
           :issue/criteria ["all suites green"]}
          (intelligence/parse-issue-metadata
           "Blocked by: abcdef1\nAcceptance: all suites green\n"))))
+
+(deftest independent-verdict-is-fail-closed
+  (is (intelligence/valid-review-verdict?
+       {:review/verdict :accepted :review/commit "abc"
+        :review/evidence ["tests green"]}
+       "abc"))
+  (is (not (intelligence/valid-review-verdict?
+            {:review/verdict :accepted :review/commit "wrong"
+             :review/evidence ["tests green"]}
+            "abc")))
+  (is (not (intelligence/valid-review-verdict?
+            {:review/verdict :rejected :review/commit "abc"
+             :review/evidence ["criterion failed"]}
+            "abc")))
+  (is (not (intelligence/valid-review-verdict? nil "abc"))))

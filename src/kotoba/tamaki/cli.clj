@@ -409,34 +409,54 @@
 
 (defn independent-review!
   [worker patch-id criteria]
-  (let [reviewer (model/agent-run
+  (let [commit-id (patch-commit-id (:agent.run/id worker) patch-id)
+        reviewer (model/agent-run
                   {:goal (str "Independently review Radicle patch " patch-id
+                              " at Git commit " commit-id
                               ". Verify every acceptance criterion and run the "
-                              "documented tests. Do not edit, commit, deliver, "
-                              "or integrate anything.\nCriteria:\n- "
-                              (str/join "\n- " criteria))
+                              "documented tests. Inspect `git show " commit-id
+                              "`; the patch id is not a Git object. Do not edit "
+                              "tracked files, commit, deliver, or integrate.\n"
+                              "Criteria:\n- " (str/join "\n- " criteria))
                    :project (:agent.run/project worker)
                    :mode :local :model (:agent.run/model worker)
                    :parent (:agent.run/id worker)
                    :capabilities #{:git :radicle}}
-                  (now))]
+                  (now))
+        verdict-file (io/file (:agent.run/project worker) ".tamaki" "reviews"
+                              (str (:agent.run/id reviewer) ".edn"))
+        reviewer (update reviewer :agent.run/goal
+                         str "\nWrite exactly one EDN verdict to "
+                         (.getAbsolutePath verdict-file)
+                         ": {:review/verdict :accepted|:rejected "
+                         ":review/commit \"COMMIT\" :review/evidence [\"...\"]}. "
+                         "Use :accepted only if every criterion passes.")]
+    (.mkdirs (.getParentFile verdict-file))
     (store/append-event! (store/default-root)
                          (model/event reviewer :run/submitted (now)
                                       {:run reviewer}))
     (let [exit (execute-run! reviewer)
           completed (run-by-id (:agent.run/id reviewer))
           status (run-process! completed (delivery/git-status-command)
-                               "independent review clean-tree check")]
+                               "independent review clean-tree check")
+          verdict (when (.exists verdict-file)
+                    (try (edn/read-string (slurp verdict-file))
+                         (catch Exception _ nil)))]
       (when-not (and (zero? exit)
-                     (empty? (delivery/porcelain-paths (:out status))))
+                     (empty? (delivery/porcelain-paths (:out status)))
+                     (intelligence/valid-review-verdict? verdict commit-id))
         (throw (ex-info "Independent review rejected the patch"
                         {:review.run/id (:agent.run/id reviewer)
                          :exit exit
+                         :verdict verdict
+                         :expected-commit commit-id
                          :changed-paths
                          (delivery/porcelain-paths (:out status))})))
       (receipt! worker :review/independent
                 {:patch/id patch-id :review.run/id (:agent.run/id reviewer)
-                 :review/criteria criteria :review/verdict :accepted})
+                 :review/criteria criteria :review/verdict :accepted
+                 :review/commit commit-id
+                 :review/evidence (:review/evidence verdict)})
       (:agent.run/id reviewer))))
 
 (defn tick-loop! [id]
