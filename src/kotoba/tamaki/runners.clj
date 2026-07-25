@@ -51,11 +51,12 @@
 
 (defn prepare-worktree! [project swarm-id runner-id]
   (let [target (worktree-path project swarm-id runner-id)
-        exit (.waitFor (.inheritIO
-                        (.start (ProcessBuilder.
-                                 ^java.util.List
-                                 ["git" "-C" project "worktree" "add"
-                                  "--detach" target "HEAD"]))))]
+        builder (doto (ProcessBuilder.
+                       ^java.util.List
+                       ["git" "-C" project "worktree" "add"
+                        "--detach" target "HEAD"])
+                  (.inheritIO))
+        exit (.waitFor (.start builder))]
     (when-not (zero? exit)
       (throw (ex-info "Could not create isolated runner worktree"
                       {:runner runner-id :project project :target target
