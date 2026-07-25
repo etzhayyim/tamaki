@@ -41,6 +41,19 @@
                           (store/append-kotobase-event!
                            config {:tamaki.event/id "e1"})))))
 
+(deftest unknown-backend-fails-closed-and-is-observable
+  (with-redefs [store/backend (constantly :typo)]
+    (is (thrown-with-msg? Exception #"Unsupported TAMAKI_STORE backend: typo"
+                          (store/read-events "ignored")))
+    (is (thrown-with-msg? Exception #"Unsupported TAMAKI_STORE backend: typo"
+                          (store/append-event! "ignored" {})))
+    (is (= {:backend :typo
+            :ok? false
+            :error "Unsupported TAMAKI_STORE backend: typo"
+            :kotobase nil
+            :local-root nil}
+           (store/readiness)))))
+
 (deftest local-read-recovers-from-an-incomplete-tail
   (let [root (.toFile (java.nio.file.Files/createTempDirectory
                        "tamaki-store-test"

@@ -10,6 +10,7 @@
            [java.time Duration]))
 
 (def event-attr :tamaki.event/blob)
+(def supported-backends #{:file :kotobase :dual})
 (def ^:private http-client (delay (HttpClient/newHttpClient)))
 
 (def ^:dynamic *http-fn*
@@ -125,28 +126,37 @@
          (sort-by (juxt :tamaki.event/at :tamaki.event/id))
          vec)))
 
+(defn- unsupported-backend! [kind]
+  (throw (ex-info (str "Unsupported TAMAKI_STORE backend: " (name kind))
+                  {:backend kind :supported supported-backends})))
+
 (defn read-events [root]
   (case (backend)
+    :file (read-local-events root)
     :kotobase (read-kotobase-events (kotobase-config))
     :dual (read-kotobase-events (kotobase-config))
-    (read-local-events root)))
+    (unsupported-backend! (backend))))
 
 (defn append-event! [root event]
   (case (backend)
+    :file (append-local-event! root event)
     :kotobase (append-kotobase-event! (kotobase-config) event)
     :dual (do
             ;; Shared state is the commit point. Never leave a local-only fact.
             (append-kotobase-event! (kotobase-config) event)
             (append-local-event! root event))
-    (append-local-event! root event)))
+    (unsupported-backend! (backend))))
 
 (defn readiness []
   (let [kind (backend)
         config (kotobase-config)]
     {:backend kind
-     :ok? (if (contains? #{:kotobase :dual} kind)
-            (kotobase-ready? config)
-            true)
+     :ok? (and (contains? supported-backends kind)
+               (if (contains? #{:kotobase :dual} kind)
+                 (kotobase-ready? config)
+                 true))
+     :error (when-not (contains? supported-backends kind)
+              (str "Unsupported TAMAKI_STORE backend: " (name kind)))
      :kotobase (when (contains? #{:kotobase :dual} kind)
                  {:url (:url config) :graph (:graph config)
                   :token? (not (str/blank? (:token config)))})
