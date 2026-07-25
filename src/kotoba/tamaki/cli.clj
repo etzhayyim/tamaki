@@ -199,7 +199,25 @@
                           {"KC_LOOP_ID" (:agent.run/id run)
                            "KC_SESSION" (:agent.run/id run)
                            "KC_WORKER_ID" (:agent.run/worker leased)}
-                          (:env runner))]
+                          (:env runner))
+                         adapters/*activity-fn*
+                         (fn [line]
+                           (let [[kind detail]
+                                 (cond
+                                   (str/includes? line "[model:start]")
+                                   [:model/token-processing :started]
+                                   (str/includes? line "[model:end]")
+                                   [:model/token-processing :completed]
+                                   (str/includes? line "[tool:start]")
+                                   [:tool/started :running]
+                                   (str/includes? line "[tool:end]")
+                                   [:tool/completed :completed]
+                                   :else [:agent/output :streaming])]
+                             (emit! leased :agent/activity
+                                    {:activity/kind kind
+                                     :activity/state detail
+                                     :activity/text
+                                     (subs line 0 (min 500 (count line)))})))]
                  (adapters/execute! argv
                                     (when (= mode :fleet)
                                       (adapters/sibling "kotoba-fleet"))))

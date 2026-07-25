@@ -113,15 +113,20 @@
                  [:bb :kotoba-code]))))
 
 (def ^:dynamic *process-env* {})
+(def ^:dynamic *activity-fn* (fn [_] nil))
 
 (def ^:dynamic *execute-fn*
   (fn [argv cwd]
     (let [pb (doto (ProcessBuilder. ^java.util.List argv)
-               (.inheritIO))
+               (.redirectErrorStream true))
           _ (doseq [[key value] *process-env*]
               (.put (.environment pb) key value))
           _ (when cwd (.directory pb (io/file cwd)))
           p (.start pb)]
+      (with-open [reader (io/reader (.getInputStream p))]
+        (doseq [line (line-seq reader)]
+          (println line)
+          (*activity-fn* line)))
       (.waitFor p))))
 
 (defn execute!
