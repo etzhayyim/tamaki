@@ -5,9 +5,16 @@
             [kotoba.tamaki.store-test])
   (:gen-class))
 
-(defn -main [& _]
+(defn run [_]
   (let [result (test/run-tests 'kotoba.tamaki.model-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.store-test)]
     (when (pos? (+ (:fail result) (:error result)))
+      (throw (ex-info "Tamaki tests failed" result)))
+    result))
+
+(defn -main [& _]
+  (try
+    (run nil)
+    (catch Exception _
       (System/exit 1))))
