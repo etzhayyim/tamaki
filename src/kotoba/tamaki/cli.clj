@@ -313,6 +313,8 @@
       (print-edn receipt)
       0)))
 
+(declare patch-commit-id)
+
 (defn integrate! [{:keys [positional options]}]
   (let [patch-id (first positional)
         run (require-run! (:run options))
@@ -335,7 +337,13 @@
     (run-process! run (delivery/patch-accept-command patch-id evidence)
                   "Radicle patch acceptance")
     (run-process! run (delivery/git-switch-command branch) "git switch")
-    (run-process! run (delivery/git-merge-patch-command patch-id) "git merge")
+    (let [head (-> (run-process! run (delivery/git-head-command)
+                                 "git rev-parse")
+                   :out str/trim)
+          reviewed-commit (patch-commit-id (:agent.run/id run) patch-id)]
+      (when-not (= head reviewed-commit)
+        (run-process! run (delivery/git-merge-patch-command patch-id)
+                      "git merge")))
     (run-process! run (delivery/push-canonical-command branch)
                   "Radicle canonical push")
     (run-process! run (delivery/issue-solve-command issue-id)
@@ -373,6 +381,16 @@
   (last (filter #(and (= run-id (:tamaki.event/run %))
                       (= kind (:tamaki.event/kind %)))
                 (events))))
+
+(defn patch-commit-id [run-id patch-id]
+  (some->> (events)
+           (filter #(and (= run-id (:tamaki.event/run %))
+                         (= :patch/created (:tamaki.event/kind %))
+                         (= patch-id
+                            (get-in % [:tamaki.event/data :patch/id]))))
+           last
+           :tamaki.event/data
+           :commit/id))
 
 (defn tick-loop! [id]
   (let [campaign (or (campaign-by-id id)

@@ -150,3 +150,14 @@
         (is (= 4 (:tamaki.loop/max-cycles status)))
         (is (= 2 (:tamaki.loop/max-failures status)))
         (is (= [:loop/started] (event-kinds root)))))))
+
+(deftest patch-commit-is-resolved-from-run-receipt
+  (let [root (temp-root)
+        run {:agent.run/id "run-1" :agent.run/parent nil}]
+    (store/append-local-event!
+     root (model/event run :patch/created 1
+                           {:patch/id "patch-1" :commit/id "commit-1"}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)]
+      (is (= "commit-1" (cli/patch-commit-id "run-1" "patch-1")))
+      (is (nil? (cli/patch-commit-id "run-2" "patch-1"))))))
