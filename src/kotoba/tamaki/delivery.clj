@@ -43,6 +43,9 @@
 (defn issue-solve-command [issue-id]
   ["rad" "issue" "state" "--no-announce" "--solved" issue-id])
 
+(defn issue-close-command [issue-id]
+  ["rad" "issue" "state" "--no-announce" "--closed" issue-id])
+
 (defn git-status-command [] ["git" "status" "--porcelain"])
 (defn porcelain-paths [output]
   (->> (str/split-lines (or output ""))

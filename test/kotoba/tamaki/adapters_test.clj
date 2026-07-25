@@ -34,3 +34,13 @@
     (is (re-find #"kotoba-code$" (first command)))
     (is (= ["--resume" "/tmp/project" "codex:"]
            (subvec (vec command) 1)))))
+
+(deftest process-environment-is-injectable
+  (let [observed (atom nil)]
+    (binding [adapters/*process-env* {"KC_LOOP_ID" "run-1"}
+              adapters/*execute-fn*
+              (fn [_ _]
+                (reset! observed adapters/*process-env*)
+                0)]
+      (is (zero? (adapters/execute! ["true"])))
+      (is (= {"KC_LOOP_ID" "run-1"} @observed)))))

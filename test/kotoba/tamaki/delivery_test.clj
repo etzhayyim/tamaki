@@ -8,6 +8,8 @@
          (delivery/issue-create-command "T" "D")))
   (is (= ["rad" "issue" "state" "--no-announce" "--solved" "issue-id"]
          (delivery/issue-solve-command "issue-id")))
+  (is (= ["rad" "issue" "state" "--no-announce" "--closed" "issue-id"]
+         (delivery/issue-close-command "issue-id")))
   (is (= ["git" "add" "--" "src/a.clj" "test/a_test.clj"]
          (delivery/git-add-command ["src/a.clj" "test/a_test.clj"])))
   (is (= ["git" "merge" "--ff-only"

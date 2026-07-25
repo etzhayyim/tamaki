@@ -122,9 +122,12 @@
                  (adapters/fleet-command leased (write-work! leased))
                  (adapters/local-command leased))
           _ (emit! leased :run/started {:agent.run/command argv})
-          exit (adapters/execute! argv
-                                  (when (= mode :fleet)
-                                    (adapters/sibling "kotoba-fleet")))
+          exit (binding [adapters/*process-env*
+                         {"KC_LOOP_ID" (:agent.run/id run)
+                          "KC_SESSION" (:agent.run/id run)}]
+                 (adapters/execute! argv
+                                    (when (= mode :fleet)
+                                      (adapters/sibling "kotoba-fleet"))))
           kind (if (zero? exit) :run/succeeded :run/failed)
           result {:agent.run/exit exit
                   :agent.run/command argv}]
@@ -433,6 +436,8 @@
             (let [exit (execute-run! run)
                   completed (run-by-id (:agent.run/id run))]
               (when-not (zero? exit)
+                (run-process! completed (delivery/issue-close-command issue-id)
+                              "failed-cycle issue closure")
                 (throw (ex-info "Cycle AgentRun failed"
                                 {:run-id (:agent.run/id run) :exit exit})))
               (let [changed-result (run-process!

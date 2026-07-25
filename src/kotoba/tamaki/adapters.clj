@@ -107,10 +107,14 @@
                  :fleet [:nbb :kotoba-fleet :murakumo]
                  [:bb :kotoba-code]))))
 
+(def ^:dynamic *process-env* {})
+
 (def ^:dynamic *execute-fn*
   (fn [argv cwd]
     (let [pb (doto (ProcessBuilder. ^java.util.List argv)
                (.inheritIO))
+          _ (doseq [[key value] *process-env*]
+              (.put (.environment pb) key value))
           _ (when cwd (.directory pb (io/file cwd)))
           p (.start pb)]
       (.waitFor p))))
