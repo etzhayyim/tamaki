@@ -142,6 +142,12 @@
     (when-not (and run (model/resumable? run))
       (throw (ex-info "Run is not resumable"
                       {:run-id id :status (:agent.run/status run)})))
+    (when (= :local (:agent.run/mode run))
+      (let [exit (adapters/execute!
+                  (adapters/local-resume-command run))]
+        (when-not (zero? exit)
+          (throw (ex-info "Underlying agent runtime could not resume"
+                          {:run-id id :exit exit})))))
     (emit! run :run/requeued {:agent.run/resume-from (:agent.run/status run)})
     (execute-run! (run-by-id id))))
 

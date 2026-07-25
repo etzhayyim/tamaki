@@ -37,6 +37,13 @@
                   (:agent.run/project run))
       model (conj model))))
 
+(defn local-resume-command
+  [run]
+  (let [binary (str (io/file (sibling "kotoba-code") "bin" "kotoba-code"))
+        model (:agent.run/model run)]
+    (cond-> [binary "--resume" (:agent.run/project run)]
+      model (conj model))))
+
 (defn fleet-work
   [run]
   {:work-id (:agent.run/id run)
