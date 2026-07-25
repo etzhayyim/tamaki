@@ -6,6 +6,7 @@
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.loop :as agent-loop]
+            [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store])
   (:gen-class))
@@ -399,6 +400,45 @@
            :tamaki.event/data
            :commit/id))
 
+(defn quality-snapshot []
+  (let [kinds (frequencies (map :tamaki.event/kind (events)))]
+    {:tests (get kinds :run/succeeded 0)
+     :assertions (get kinds :patch/integrated 0)
+     :failures (+ (get kinds :run/failed 0)
+                  (get kinds :loop/cycle-failed 0))}))
+
+(defn independent-review!
+  [worker patch-id criteria]
+  (let [reviewer (model/agent-run
+                  {:goal (str "Independently review Radicle patch " patch-id
+                              ". Verify every acceptance criterion and run the "
+                              "documented tests. Do not edit, commit, deliver, "
+                              "or integrate anything.\nCriteria:\n- "
+                              (str/join "\n- " criteria))
+                   :project (:agent.run/project worker)
+                   :mode :local :model (:agent.run/model worker)
+                   :parent (:agent.run/id worker)
+                   :capabilities #{:git :radicle}}
+                  (now))]
+    (store/append-event! (store/default-root)
+                         (model/event reviewer :run/submitted (now)
+                                      {:run reviewer}))
+    (let [exit (execute-run! reviewer)
+          completed (run-by-id (:agent.run/id reviewer))
+          status (run-process! completed (delivery/git-status-command)
+                               "independent review clean-tree check")]
+      (when-not (and (zero? exit)
+                     (empty? (delivery/porcelain-paths (:out status))))
+        (throw (ex-info "Independent review rejected the patch"
+                        {:review.run/id (:agent.run/id reviewer)
+                         :exit exit
+                         :changed-paths
+                         (delivery/porcelain-paths (:out status))})))
+      (receipt! worker :review/independent
+                {:patch/id patch-id :review.run/id (:agent.run/id reviewer)
+                 :review/criteria criteria :review/verdict :accepted})
+      (:agent.run/id reviewer))))
+
 (defn tick-loop! [id]
   (let [campaign (or (campaign-by-id id)
                      (throw (ex-info "Unknown loop" {:loop-id id})))
@@ -416,15 +456,64 @@
           (when (seq (delivery/porcelain-paths (:out status)))
             (throw (ex-info "Cycle requires a clean working tree"
                             {:paths (delivery/porcelain-paths (:out status))})))
-          (let [opened (delivery/succeeded!
-                        (delivery/execute!
-                         (delivery/issue-create-command
-                          title (agent-loop/cycle-goal campaign cycle "<pending>"))
-                         project)
-                        "cycle issue creation")
-                issue-id (delivery/output-id opened)
+          (let [listed (delivery/succeeded!
+                        (delivery/execute! (delivery/issue-list-command) project)
+                        "cycle issue discovery")
+                existing (intelligence/parse-issue-list (:out listed))
+                dynamics (intelligence/dynamics-signals
+                          {:failures (:tamaki.loop/failures campaign)
+                           :max-failures (:tamaki.loop/max-failures campaign)
+                           :active-runs (count (filter #(= :running
+                                                          (:agent.run/status %))
+                                                     (vals (runs))))
+                           :open-issues (count existing)})
+                candidates
+                (mapv
+                 (fn [candidate]
+                   (let [shown (delivery/succeeded!
+                                (delivery/execute!
+                                 (delivery/issue-show-command
+                                  (:issue/id candidate))
+                                 project)
+                                "candidate issue inspection")
+                         metadata (intelligence/parse-issue-metadata
+                                   (:out shown))]
+                     (-> candidate
+                         (merge metadata)
+                         (update :issue/signals merge dynamics))))
+                 existing)
+                selected (intelligence/selection candidates)
+                criteria (or (seq (get-in selected [:issue :issue/criteria]))
+                             (intelligence/acceptance-criteria
+                              (:tamaki.loop/objective campaign)))
+                opened (when-not selected
+                         (delivery/succeeded!
+                          (delivery/execute!
+                           (delivery/issue-create-command
+                            title
+                            (str (agent-loop/cycle-goal campaign cycle "<pending>")
+                                 "\n\nAcceptance: "
+                                 (str/join "\nAcceptance: " criteria)))
+                           project)
+                          "cycle issue creation"))
+                issue-id (or (get-in selected [:issue :issue/id])
+                             (delivery/output-id opened))
+                decision (or selected
+                             {:issue (intelligence/issue-node
+                                      {:id issue-id :title title
+                                       :criteria criteria :signals dynamics})
+                              :score (intelligence/leverage-score
+                                      (intelligence/issue-node
+                                       {:id issue-id :title title
+                                        :criteria criteria :signals dynamics}))
+                              :candidate-count 1 :blocked-count 0})
                 run (model/agent-run
-                     {:goal (agent-loop/cycle-goal campaign cycle issue-id)
+                     {:goal (str (agent-loop/cycle-goal campaign cycle issue-id)
+                                 "\nAcceptance criteria:\n- "
+                                 (str/join "\n- " criteria)
+                                 "\nBlockers: "
+                                 (pr-str (get-in decision
+                                                 [:issue :issue/blockers])))
                       :project project :mode :local
                       :model (:tamaki.loop/model campaign)
                       :capabilities #{:git :radicle}}
@@ -433,6 +522,12 @@
                                  (model/event run :run/submitted (now) {:run run}))
             (receipt! run :issue/discovered {:issue/id issue-id
                                              :loop/id id :loop/cycle cycle})
+            (receipt! run :issue/prioritized
+                      {:issue/id issue-id
+                       :issue/selection decision
+                       :issue/dynamics dynamics
+                       :issue/criteria criteria})
+            (let [before (quality-snapshot)]
             (let [exit (execute-run! run)
                   completed (run-by-id (:agent.run/id run))]
               (when-not (zero? exit)
@@ -471,6 +566,15 @@
                       (review! {:positional [patch-id]
                                 :options {:run (:agent.run/id run)
                                           :tests evidence}})
+                      (let [review-run-id
+                            (independent-review! completed patch-id criteria)]
+                        (receipt! completed :effect/measured
+                                  (merge {:patch/id patch-id
+                                          :review.run/id review-run-id
+                                          :effect/before before}
+                                         (let [after (quality-snapshot)]
+                                           (assoc (intelligence/effect before after)
+                                                  :effect/after after)))))
                       (if (:tamaki.loop/auto-approve campaign)
                         (do
                           (integrate! {:positional [patch-id]
@@ -490,6 +594,7 @@
                                   :result (if (:tamaki.loop/auto-approve campaign)
                                             :integrated :awaiting-approval)
                                   :issue/id issue-id :patch/id patch-id}))))))))
+            )
         (catch Exception e
           (append-loop-event! campaign :loop/cycle-failed
                               {:loop/cycle cycle :error (.getMessage e)

@@ -40,6 +40,9 @@
 (defn issue-show-command [issue-id]
   ["rad" "issue" "show" issue-id])
 
+(defn issue-list-command []
+  ["rad" "issue" "list" "--open"])
+
 (defn issue-solve-command [issue-id]
   ["rad" "issue" "state" "--no-announce" "--solved" issue-id])
 

@@ -111,6 +111,16 @@ accepted, fast-forward-only integration. `--max-cycles`, `--max-failures`,
 and the durable event log are circuit breakers; restarting `loop run` resumes
 recorded state rather than resetting its memory.
 
+Before execution, each cycle reads the open Radicle backlog, extracts
+`Blocked by: <issue-id>` and `Acceptance: <criterion>` metadata, rejects
+dependency cycles, and ranks only unblocked work. The deterministic leverage
+score combines impact, urgency, confidence, feedback pressure, risk, effort,
+and current WIP pressure. Selection inputs and ranking are durable
+`:issue/prioritized` receipts. A separate child AgentRun performs a read-only
+review of the resulting patch; integration is attempted only after it passes
+the criteria without changing the tree. `:effect/measured` records the
+before/after operational signal so later cycles can respond to the feedback.
+
 ## Dogfood
 
 Run Tamaki against its own checkout, then inspect the durable lifecycle:
