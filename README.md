@@ -55,6 +55,18 @@ to the existing Murakumo operators. Their remaining arguments pass through
 unchanged, so Tamaki stays one operator entry point without forking those
 projects' command contracts.
 
+## Dogfood
+
+Run Tamaki against its own checkout, then inspect the durable lifecycle:
+
+```sh
+run_id=$(bin/tamaki submit "add one focused test and run both suites" \
+  --project "$PWD" | bb -e '(println (:agent.run/id (read)))')
+bin/tamaki run "$run_id"
+bin/tamaki status "$run_id"
+bin/tamaki agents "$run_id"
+```
+
 ## Ownership
 
 - `tamaki`: AgentRun contract, run tree, lifecycle and adapters.
@@ -88,5 +100,6 @@ a local-only event that the rest of the fleet cannot observe.
 
 ```sh
 bb test
+clojure -M:test
 bin/tamaki doctor
 ```

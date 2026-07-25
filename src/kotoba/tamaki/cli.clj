@@ -52,6 +52,8 @@
 (defn print-edn [x]
   (pprint/pprint x))
 
+(declare execute-run!)
+
 (defn submit!
   [{:keys [positional options]}]
   (let [goal (first positional)
@@ -80,7 +82,7 @@
      (model/event run :run/submitted (now) {:run run}))
     (print-edn run)
     (when (:execute options)
-      (run! run))))
+      (execute-run! run))))
 
 (defn write-work! [run]
   (let [dir (io/file (store/default-root) "work")
@@ -89,7 +91,7 @@
     (spit f (pr-str (adapters/fleet-work run)))
     (.getAbsolutePath f)))
 
-(defn run!
+(defn execute-run!
   [run]
   (when-not run
     (throw (ex-info "Unknown run" {})))
@@ -140,8 +142,14 @@
     (when-not (and run (model/resumable? run))
       (throw (ex-info "Run is not resumable"
                       {:run-id id :status (:agent.run/status run)})))
+    (when (= :local (:agent.run/mode run))
+      (let [exit (adapters/execute!
+                  (adapters/local-resume-command run))]
+        (when-not (zero? exit)
+          (throw (ex-info "Underlying agent runtime could not resume"
+                          {:run-id id :exit exit})))))
     (emit! run :run/requeued {:agent.run/resume-from (:agent.run/status run)})
-    (run! (run-by-id id))))
+    (execute-run! (run-by-id id))))
 
 (defn agents!
   [root-id]
@@ -171,7 +179,7 @@
         parsed (parse-args rest)]
     (case command
       "submit" (or (submit! parsed) 0)
-      "run" (run! (run-by-id (first (:positional parsed))))
+      "run" (execute-run! (run-by-id (first (:positional parsed))))
       "status" (do (status! (first (:positional parsed))) 0)
       "resume" (resume! (first (:positional parsed)))
       "agents" (do (agents! (first (:positional parsed))) 0)

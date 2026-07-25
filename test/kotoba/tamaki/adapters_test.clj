@@ -24,3 +24,13 @@
     (is (= ["plan" "model-a"] (subvec (vec infer) 5)))
     (is (re-find #"fleet-nodes\.cljs$" (nth nodes 3)))
     (is (= ["--nodes" "a,b"] (subvec (vec nodes) 4)))))
+
+(deftest local-resume-routes-through-kotoba-code
+  (let [run (model/agent-run {:goal "continue"
+                              :project "/tmp/project"
+                              :model "codex:"}
+                             1)
+        command (adapters/local-resume-command run)]
+    (is (re-find #"kotoba-code$" (first command)))
+    (is (= ["--resume" "/tmp/project" "codex:"]
+           (subvec (vec command) 1)))))
