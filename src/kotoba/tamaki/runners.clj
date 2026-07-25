@@ -17,7 +17,8 @@
 (defn profiles []
   (let [defaults [{:id "codex" :model "codex:" :kind :codex}
                   {:id "claude" :model "claude:sonnet" :kind :claude}
-                  {:id "claude-zai" :model "claude-zai:" :kind :claude-zai}]
+                  {:id "claude-zai" :model "claude-zai:" :kind :claude-zai}
+                  {:id "grok" :model "grok:" :kind :grok}]
         file (io/file (or (System/getenv "TAMAKI_RUNNERS_FILE")
                           (str (System/getProperty "user.home")
                                "/.config/tamaki/runners.edn")))

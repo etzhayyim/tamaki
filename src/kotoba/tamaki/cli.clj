@@ -214,10 +214,20 @@
                                    [:tool/completed :completed]
                                    :else [:agent/output :streaming])]
                              (emit! leased :agent/activity
-                                    {:activity/kind kind
-                                     :activity/state detail
-                                     :activity/text
-                                     (subs line 0 (min 500 (count line)))})))]
+                                    (cond-> {:activity/kind kind
+                                             :activity/state detail
+                                             :activity/text
+                                             (subs line 0 (min 500 (count line)))}
+                                      (str/includes? line "[model:usage]")
+                                      (merge
+                                       (into {}
+                                             (keep
+                                              (fn [[_ key value]]
+                                                (when-let [n (parse-long value)]
+                                                  [(keyword "usage" key) n])))
+                                             (re-seq
+                                              #"(input|output|cache-read|cache-write)=([0-9]+)"
+                                              line)))))))]
                  (adapters/execute! argv
                                     (when (= mode :fleet)
                                       (adapters/sibling "kotoba-fleet"))))
@@ -239,6 +249,7 @@
                     (case (:kind profile)
                       :codex "codex"
                       :claude-zai "claude-zai"
+                      :grok "grok"
                       "claude"))))
           (runners/profiles))}))
 

@@ -3,7 +3,7 @@
             [kotoba.tamaki.runners :as runners]))
 
 (deftest built-in-runner-pool-is-explicit-and-non-secret
-  (is (= #{"codex" "claude" "claude-zai"}
+  (is (= #{"codex" "claude" "claude-zai" "grok"}
          (set (map :id (runners/profiles)))))
   (is (= "claude-zai:" (:model (runners/profile "claude-zai"))))
   (is (nil? (:env (runners/safe-profile
