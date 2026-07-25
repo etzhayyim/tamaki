@@ -3,6 +3,8 @@
             [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.cli :as cli]
+            [kotoba.tamaki.delivery :as delivery]
+            [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store]))
 
 (def ready-report
@@ -94,3 +96,39 @@
                   :run/leased :run/started :run/failed
                   :run/requeued :run/leased :run/started :run/succeeded]
                  (event-kinds root))))))))
+
+(deftest delivery-refuses-unowned-paths
+  (let [root (temp-root)
+        run (assoc (model/agent-run {:goal "done" :project "/repo"} 1)
+                   :agent.run/id "run-deliver"
+                   :agent.run/status :succeeded)]
+    (store/append-local-event!
+     root (model/event run :run/submitted 1 {:run run}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)]
+      (binding [delivery/*process-fn*
+                (fn [argv _]
+                  (if (= ["git" "status" "--porcelain"] argv)
+                    {:exit 0 :out " M src/owned.clj\n?? secret.txt\n"}
+                    {:exit 0 :out ""}))]
+        (is (thrown-with-msg?
+             Exception #"outside this delivery"
+             (cli/dispatch ["deliver" "run-deliver"
+                            "--issue" "abc"
+                            "--paths" "src/owned.clj"
+                            "--message" "Resolve abc"])))))))
+
+(deftest integration-requires-approval
+  (let [root (temp-root)
+        run (assoc (model/agent-run {:goal "done" :project "/repo"} 1)
+                   :agent.run/id "run-integrate"
+                   :agent.run/status :succeeded)]
+    (store/append-local-event!
+     root (model/event run :run/submitted 1 {:run run}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)]
+      (is (thrown-with-msg?
+           Exception #"explicit --approve"
+           (cli/dispatch ["integrate" "patch-id"
+                          "--run" "run-integrate"
+                          "--tests" "green"]))))))

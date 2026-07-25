@@ -4,6 +4,7 @@
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [kotoba.tamaki.adapters :as adapters]
+            [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store])
   (:gen-class))
@@ -18,6 +19,11 @@
        "  tamaki status [run-id]\n"
        "  tamaki resume <run-id>\n"
        "  tamaki agents [run-id]\n"
+       "  tamaki issue create|show ...\n"
+       "  tamaki work issue <issue-id> --project PATH [--execute]\n"
+       "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
+       "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
+       "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -35,8 +41,9 @@
       {:positional positional :options options}
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
-          (if (= x "--execute")
-            (recur (rest xs) positional (assoc options :execute true))
+          (if (contains? #{"--execute" "--approve"} x)
+            (recur (rest xs) positional
+                   (assoc options (keyword (subs x 2)) true))
             (recur more positional
                    (assoc options (keyword (subs x 2)) y)))
           (recur (rest xs) (conj positional x) options))))))
@@ -173,6 +180,156 @@
   [argv cwd]
   (adapters/execute! argv cwd))
 
+(defn require-run! [id]
+  (or (run-by-id id)
+      (throw (ex-info "Unknown run" {:run-id id}))))
+
+(defn receipt! [run kind data]
+  (emit! run kind (assoc data :receipt/version 1)))
+
+(defn run-process! [run argv operation]
+  (delivery/succeeded!
+   (delivery/execute! argv (:agent.run/project run)) operation))
+
+(defn issue! [{:keys [positional options]}]
+  (let [[action value] positional
+        run (when-let [id (:run options)] (require-run! id))]
+    (case action
+      "create"
+      (let [result (delivery/succeeded!
+                    (delivery/execute!
+                     (delivery/issue-create-command value (:description options))
+                     (:project options))
+                    "Radicle issue creation")
+            issue-id (delivery/output-id result)
+            receipt {:issue/id issue-id :issue/title value}]
+        (when run (receipt! run :issue/discovered receipt))
+        (print-edn receipt)
+        0)
+
+      "show"
+      (let [result (delivery/succeeded!
+                    (delivery/execute! (delivery/issue-show-command value)
+                                       (:project options))
+                    "Radicle issue discovery")
+            receipt {:issue/id value :issue/observed true}]
+        (when run (receipt! run :issue/discovered receipt))
+        (print-edn (assoc receipt :issue/output (:out result)))
+        0)
+
+      (throw (ex-info "Usage: tamaki issue create|show ..." {})))))
+
+(defn work-issue! [{:keys [positional options]}]
+  (let [issue-id (second positional)
+        project (:project options)]
+    (when (str/blank? project)
+      (throw (ex-info "work issue requires --project PATH" {})))
+    (let [observed (delivery/succeeded!
+                  (delivery/execute! (delivery/issue-show-command issue-id) project)
+                  "Radicle issue discovery")
+        goal (or (:goal options)
+                 (str "Implement Radicle issue " issue-id "\n\n" (:out observed)))
+        run (model/agent-run {:goal goal :project project :mode :local
+                              :model (:model options)
+                              :capabilities #{:git :radicle}} (now))]
+      (store/append-event! (store/default-root)
+                           (model/event run :run/submitted (now) {:run run}))
+      (receipt! run :issue/discovered {:issue/id issue-id})
+      (print-edn run)
+      (if (:execute options) (execute-run! run) 0))))
+
+(defn deliver! [{:keys [positional options]}]
+  (let [run (require-run! (first positional))
+        issue-id (:issue options)
+        paths (some-> (:paths options) (str/split #","))
+        paths (vec (remove str/blank? paths))
+        message (:message options)]
+    (when-not (= :succeeded (:agent.run/status run))
+      (throw (ex-info "Only a succeeded AgentRun may be delivered"
+                      {:run-id (:agent.run/id run)
+                       :status (:agent.run/status run)})))
+    (when (str/blank? issue-id)
+      (throw (ex-info "deliver requires --issue ISSUE-ID" {})))
+    (when (empty? paths)
+      (throw (ex-info "deliver requires explicit --paths a,b" {})))
+    (when (str/blank? message)
+      (throw (ex-info "deliver requires --message TEXT" {})))
+    (let [status (run-process! run (delivery/git-status-command) "git status")
+          changed (set (delivery/porcelain-paths (:out status)))
+          owned (set paths)
+          outside (vec (sort (remove owned changed)))
+          dirty? (seq changed)]
+      (when (seq outside)
+        (throw (ex-info "Working tree contains paths outside this delivery"
+                        {:outside-paths outside :owned-paths paths})))
+      (when dirty?
+        (run-process! run (delivery/git-add-command paths) "git add")
+        (run-process! run (delivery/git-commit-command message) "git commit"))
+      (let [head (-> (run-process! run (delivery/git-head-command) "git rev-parse")
+                     :out str/trim)
+            _ (receipt! run :commit/created
+                        {:commit/id head :commit/created? dirty?
+                         :issue/id issue-id})
+            pushed (run-process! run (delivery/patch-create-command message)
+                                 "Radicle patch creation")
+            patch-id (delivery/output-id pushed)
+            receipt {:patch/id patch-id :commit/id head :issue/id issue-id
+                     :patch/ref "HEAD:refs/patches"}]
+        (receipt! run :patch/created receipt)
+        (print-edn receipt)
+        0))))
+
+(defn review! [{:keys [positional options]}]
+  (let [patch-id (first positional)
+        run (require-run! (:run options))
+        evidence (:tests options)]
+    (when (str/blank? evidence)
+      (throw (ex-info "review requires --tests TEST-EVIDENCE" {})))
+    (let [shown (run-process! run (delivery/patch-show-command patch-id)
+                              "Radicle patch show")
+          diffed (run-process! run (delivery/patch-diff-command patch-id)
+                               "Radicle patch diff")
+          receipt {:patch/id patch-id :review/tests evidence
+                   :review/show (subs (:out shown) 0 (min 2000 (count (:out shown))))
+                   :review/diff-bytes (count (:out diffed))}]
+      (receipt! run :review/observed receipt)
+      (print-edn receipt)
+      0)))
+
+(defn integrate! [{:keys [positional options]}]
+  (let [patch-id (first positional)
+        run (require-run! (:run options))
+        issue-id (:issue options)
+        evidence (:tests options)
+        branch (or (:branch options) "main")]
+    (when-not (:approve options)
+      (throw (ex-info "Integration requires explicit --approve"
+                      {:patch/id patch-id})))
+    (when-not (some #(and (= (:agent.run/id run) (:tamaki.event/run %))
+                          (= :review/observed (:tamaki.event/kind %))
+                          (= patch-id (get-in % [:tamaki.event/data :patch/id])))
+                    (events))
+      (throw (ex-info "Integration requires an observed review"
+                      {:patch/id patch-id})))
+    (when (str/blank? evidence)
+      (throw (ex-info "Integration requires --tests TEST-EVIDENCE" {})))
+    (when (str/blank? issue-id)
+      (throw (ex-info "Integration requires --issue ISSUE-ID" {})))
+    (run-process! run (delivery/patch-accept-command patch-id evidence)
+                  "Radicle patch acceptance")
+    (run-process! run (delivery/git-switch-command branch) "git switch")
+    (run-process! run (delivery/git-merge-patch-command patch-id) "git merge")
+    (run-process! run (delivery/push-canonical-command branch)
+                  "Radicle canonical push")
+    (run-process! run (delivery/issue-solve-command issue-id)
+                  "Radicle issue resolution")
+    (let [receipt {:patch/id patch-id :integration/approved true
+                   :issue/id issue-id :issue/state :solved
+                   :integration/branch branch :review/tests evidence}]
+      (receipt! run :patch/integrated receipt)
+      (print-edn receipt)
+      0)))
+
 (defn dispatch
   [args]
   (let [[command & rest] args
@@ -183,6 +340,13 @@
       "status" (do (status! (first (:positional parsed))) 0)
       "resume" (resume! (first (:positional parsed)))
       "agents" (do (agents! (first (:positional parsed))) 0)
+      "issue" (issue! parsed)
+      "work" (if (= "issue" (first (:positional parsed)))
+                 (work-issue! parsed)
+                 (throw (ex-info "Usage: tamaki work issue ISSUE-ID" {})))
+      "deliver" (deliver! parsed)
+      "review" (review! parsed)
+      "integrate" (integrate! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

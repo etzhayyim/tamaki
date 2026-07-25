@@ -55,6 +55,37 @@ to the existing Murakumo operators. Their remaining arguments pass through
 unchanged, so Tamaki stays one operator entry point without forking those
 projects' command contracts.
 
+## Sovereign Radicle delivery
+
+Tamaki can own the complete issue-to-canonical loop without a hosted forge:
+
+```sh
+bin/tamaki issue create "Add bounded retries" \
+  --project "$PWD" --description "Implement and test bounded retries."
+
+bin/tamaki work issue <issue-id> \
+  --project "$PWD" --model codex: --execute
+
+bin/tamaki deliver <run-id> \
+  --issue <issue-id> \
+  --paths src/kotoba/tamaki/retry.clj,test/kotoba/tamaki/retry_test.clj \
+  --message "Add bounded retries"
+
+bin/tamaki review <patch-id> \
+  --run <run-id> --tests "bb test; clojure -M:test; clojure -X:test"
+
+# Refuses unless the review receipt exists and approval is explicit.
+bin/tamaki integrate <patch-id> \
+  --run <run-id> --issue <issue-id> --tests "all suites green" --approve
+```
+
+`deliver` refuses non-succeeded runs and requires an explicit path allowlist.
+It opens a draft patch via `git push rad HEAD:refs/patches`. `integrate`
+records an accepted Radicle review, fast-forwards the canonical branch to the
+reviewed patch ref, then pushes that branch to the `rad` remote. Issue, commit,
+patch, review, and integration receipts are appended to the same Tamaki event
+store as the AgentRun. Successful integration marks the Radicle issue solved.
+
 ## Dogfood
 
 Run Tamaki against its own checkout, then inspect the durable lifecycle:
