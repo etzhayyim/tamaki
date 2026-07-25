@@ -107,11 +107,15 @@
                  :fleet [:nbb :kotoba-fleet :murakumo]
                  [:bb :kotoba-code]))))
 
+(def ^:dynamic *execute-fn*
+  (fn [argv cwd]
+    (let [pb (doto (ProcessBuilder. ^java.util.List argv)
+               (.inheritIO))
+          _ (when cwd (.directory pb (io/file cwd)))
+          p (.start pb)]
+      (.waitFor p))))
+
 (defn execute!
   ([argv] (execute! argv nil))
   ([argv cwd]
-   (let [pb (doto (ProcessBuilder. ^java.util.List argv)
-              (.inheritIO))
-         _ (when cwd (.directory pb (io/file cwd)))
-        p (.start pb)]
-     (.waitFor p))))
+   (*execute-fn* argv cwd)))

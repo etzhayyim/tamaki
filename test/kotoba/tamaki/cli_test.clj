@@ -1,0 +1,96 @@
+(ns kotoba.tamaki.cli-test
+  (:require [clojure.edn :as edn]
+            [clojure.test :refer [deftest is testing]]
+            [kotoba.tamaki.adapters :as adapters]
+            [kotoba.tamaki.cli :as cli]
+            [kotoba.tamaki.store :as store]))
+
+(def ready-report
+  {:bb {:ok? true}
+   :kotoba-code {:ok? true}})
+
+(defn temp-root []
+  (str (java.nio.file.Files/createTempDirectory
+        "tamaki-cli-test-"
+        (make-array java.nio.file.attribute.FileAttribute 0))))
+
+(defn call [args]
+  (let [out (java.io.StringWriter.)]
+    {:exit (binding [*out* out]
+             (cli/dispatch args))
+     :value (edn/read-string (str out))}))
+
+(defn event-kinds [root]
+  (mapv :tamaki.event/kind (store/read-local-events root)))
+
+(deftest public-submit-status-and-agents
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [{run :value} (call ["submit" "dogfood lifecycle"
+                                "--project" "/tmp/project"])
+            id (:agent.run/id run)
+            {status :value} (call ["status" id])
+            {listing :value} (call ["status"])
+            {agents :value} (call ["agents"])]
+        (is (= :queued (:agent.run/status run)))
+        (is (= run status))
+        (is (= [id] (mapv :agent.run/id listing)))
+        (is (= id (get-in agents [0 :run :agent.run/id])))
+        (is (= [:run/submitted] (event-kinds root)))))))
+
+(deftest successful-and-failed-execution
+  (doseq [[runtime-exit expected-status terminal-kind]
+          [[0 :succeeded :run/succeeded]
+           [7 :failed :run/failed]]]
+    (testing (name expected-status)
+      (let [root (temp-root)
+            commands (atom [])]
+        (with-redefs [store/default-root (constantly root)
+                      store/backend (constantly :file)
+                      adapters/readiness (constantly ready-report)
+                      cli/now (constantly 2000)]
+          (binding [adapters/*execute-fn*
+                    (fn [argv cwd]
+                      (swap! commands conj [argv cwd])
+                      runtime-exit)]
+            (let [{run :value} (call ["submit" "execute me"
+                                      "--project" "/tmp/project"])
+                  id (:agent.run/id run)
+                  {result :value exit :exit} (call ["run" id])]
+              (is (= runtime-exit exit))
+              (is (= expected-status (:agent.run/status result)))
+              (is (= expected-status
+                     (:agent.run/status (:value (call ["status" id])))))
+              (is (= 1 (count @commands)))
+              (is (= [:run/submitted :run/leased :run/started terminal-kind]
+                     (event-kinds root))))))))))
+
+(deftest failed-run-resumes-through-public-command
+  (let [root (temp-root)
+        exits (atom [1 0 0])
+        commands (atom [])]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  adapters/readiness (constantly ready-report)
+                  cli/now (let [clock (atom 3000)] #(swap! clock inc))]
+      (binding [adapters/*execute-fn*
+                (fn [argv cwd]
+                  (swap! commands conj [argv cwd])
+                  (let [exit (first @exits)]
+                    (swap! exits subvec 1)
+                    exit))]
+        (let [{run :value} (call ["submit" "resume me"
+                                  "--project" "/tmp/project"])
+              id (:agent.run/id run)]
+          (is (= 1 (:exit (call ["run" id]))))
+          (is (= 0 (:exit (call ["resume" id]))))
+          (is (= :succeeded
+                 (:agent.run/status (:value (call ["status" id])))))
+          (is (= 3 (count @commands)))
+          (is (= "--resume" (-> @commands second first second)))
+          (is (= [:run/submitted
+                  :run/leased :run/started :run/failed
+                  :run/requeued :run/leased :run/started :run/succeeded]
+                 (event-kinds root))))))))

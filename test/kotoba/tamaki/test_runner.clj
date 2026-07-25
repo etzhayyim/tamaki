@@ -1,6 +1,7 @@
 (ns kotoba.tamaki.test-runner
   (:require [clojure.test :as test]
             [kotoba.tamaki.adapters-test]
+            [kotoba.tamaki.cli-test]
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.store-test])
   (:gen-class))
@@ -8,6 +9,7 @@
 (defn run [_]
   (let [result (test/run-tests 'kotoba.tamaki.model-test
                                'kotoba.tamaki.adapters-test
+                               'kotoba.tamaki.cli-test
                                'kotoba.tamaki.store-test)]
     (when (pos? (+ (:fail result) (:error result)))
       (throw (ex-info "Tamaki tests failed" result)))
