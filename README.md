@@ -86,6 +86,31 @@ reviewed patch ref, then pushes that branch to the `rad` remote. Issue, commit,
 patch, review, and integration receipts are appended to the same Tamaki event
 store as the AgentRun. Successful integration marks the Radicle issue solved.
 
+## Persistent growth loop
+
+An improvement campaign repeats the Radicle delivery cycle while keeping every
+cycle bounded and independently auditable:
+
+```sh
+bin/tamaki loop start \
+  --project "$PWD" \
+  --objective "raise maturity, coverage, reliability, and documentation" \
+  --model codex: \
+  --max-cycles 10 --max-failures 3 --interval-ms 60000
+
+bin/tamaki loop tick <loop-id>   # exactly one resumable cycle
+bin/tamaki loop run <loop-id>    # continue until a bound is reached
+bin/tamaki loop status <loop-id>
+```
+
+Each cycle requires a clean tree, creates a Radicle issue, runs a fresh
+AgentRun, discovers its bounded diff, opens and reviews a patch, and records
+the result. By default the campaign pauses at a reviewed patch. Add
+`--auto-approve` to `loop start` only for a trusted repository to enable
+accepted, fast-forward-only integration. `--max-cycles`, `--max-failures`,
+and the durable event log are circuit breakers; restarting `loop run` resumes
+recorded state rather than resetting its memory.
+
 ## Dogfood
 
 Run Tamaki against its own checkout, then inspect the durable lifecycle:

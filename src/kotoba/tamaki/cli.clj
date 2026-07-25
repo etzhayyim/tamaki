@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.delivery :as delivery]
+            [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store])
   (:gen-class))
@@ -24,6 +25,7 @@
        "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
+       "  tamaki loop start|status|tick|run ...\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -41,7 +43,7 @@
       {:positional positional :options options}
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
-          (if (contains? #{"--execute" "--approve"} x)
+          (if (contains? #{"--execute" "--approve" "--auto-approve"} x)
             (recur (rest xs) positional
                    (assoc options (keyword (subs x 2)) true))
             (recur more positional
@@ -187,6 +189,21 @@
 (defn receipt! [run kind data]
   (emit! run kind (assoc data :receipt/version 1)))
 
+(defn append-loop-event! [campaign kind data]
+  (store/append-event! (store/default-root)
+                       (agent-loop/loop-event campaign kind (now) data)))
+
+(defn campaigns [] (agent-loop/campaigns (events)))
+(defn campaign-by-id [id] (get (campaigns) id))
+
+(defn parse-long-option [options key default]
+  (if-let [value (get options key)]
+    (try (Long/parseLong value)
+         (catch Exception _
+           (throw (ex-info (str "--" (name key) " must be an integer")
+                           {:option key :value value}))))
+    default))
+
 (defn run-process! [run argv operation]
   (delivery/succeeded!
    (delivery/execute! argv (:agent.run/project run)) operation))
@@ -330,6 +347,160 @@
       (print-edn receipt)
       0)))
 
+(defn start-loop! [{:keys [options]}]
+  (let [campaign (agent-loop/campaign
+                  {:objective (:objective options)
+                   :project (:project options)
+                   :model (:model options)
+                   :max-cycles (parse-long-option options :max-cycles 10)
+                   :interval-ms (parse-long-option options :interval-ms 60000)
+                   :max-failures (parse-long-option options :max-failures 3)
+                   :auto-approve (boolean (:auto-approve options))}
+                  (now))]
+    (append-loop-event! campaign :loop/started {:campaign campaign})
+    (print-edn campaign)
+    0))
+
+(defn loop-status! [id]
+  (if id
+    (print-edn (or (campaign-by-id id)
+                   (throw (ex-info "Unknown loop" {:loop-id id}))))
+    (print-edn (->> (vals (campaigns))
+                    (sort-by :tamaki.loop/updated-at >) vec)))
+  0)
+
+(defn latest-run-event [run-id kind]
+  (last (filter #(and (= run-id (:tamaki.event/run %))
+                      (= kind (:tamaki.event/kind %)))
+                (events))))
+
+(defn tick-loop! [id]
+  (let [campaign (or (campaign-by-id id)
+                     (throw (ex-info "Unknown loop" {:loop-id id})))
+        reason (agent-loop/stop-reason campaign)]
+    (when reason
+      (throw (ex-info "Loop cannot tick" {:loop-id id :reason reason})))
+    (let [cycle (inc (:tamaki.loop/cycles campaign))
+          project (:tamaki.loop/project campaign)
+          title (str "ASI cycle " cycle ": " (:tamaki.loop/objective campaign))]
+      (append-loop-event! campaign :loop/cycle-started {:loop/cycle cycle})
+      (try
+        (let [status (delivery/succeeded!
+                      (delivery/execute! (delivery/git-status-command) project)
+                      "cycle clean-tree check")]
+          (when (seq (delivery/porcelain-paths (:out status)))
+            (throw (ex-info "Cycle requires a clean working tree"
+                            {:paths (delivery/porcelain-paths (:out status))})))
+          (let [opened (delivery/succeeded!
+                        (delivery/execute!
+                         (delivery/issue-create-command
+                          title (agent-loop/cycle-goal campaign cycle "<pending>"))
+                         project)
+                        "cycle issue creation")
+                issue-id (delivery/output-id opened)
+                run (model/agent-run
+                     {:goal (agent-loop/cycle-goal campaign cycle issue-id)
+                      :project project :mode :local
+                      :model (:tamaki.loop/model campaign)
+                      :capabilities #{:git :radicle}}
+                     (now))]
+            (store/append-event! (store/default-root)
+                                 (model/event run :run/submitted (now) {:run run}))
+            (receipt! run :issue/discovered {:issue/id issue-id
+                                             :loop/id id :loop/cycle cycle})
+            (let [exit (execute-run! run)
+                  completed (run-by-id (:agent.run/id run))]
+              (when-not (zero? exit)
+                (throw (ex-info "Cycle AgentRun failed"
+                                {:run-id (:agent.run/id run) :exit exit})))
+              (let [changed-result (run-process!
+                                    completed (delivery/git-status-command)
+                                    "cycle changed-path discovery")
+                    paths (delivery/porcelain-paths (:out changed-result))]
+                (if (empty? paths)
+                  (do
+                    (run-process! completed (delivery/issue-solve-command issue-id)
+                                  "no-change issue resolution")
+                    (append-loop-event!
+                     campaign :loop/cycle-no-change
+                     {:loop/cycle cycle :issue/id issue-id
+                      :agent.run/id (:agent.run/id run)})
+                    (print-edn {:loop/id id :loop/cycle cycle
+                                :result :no-change :issue/id issue-id}))
+                  (do
+                    (deliver! {:positional [(:agent.run/id run)]
+                               :options {:issue issue-id
+                                         :paths (str/join "," paths)
+                                         :message title}})
+                    (let [patch-id (or
+                                    (get-in
+                                     (latest-run-event (:agent.run/id run)
+                                                       :patch/created)
+                                     [:tamaki.event/data :patch/id])
+                                    (throw
+                                     (ex-info "Cycle delivery did not produce a patch id"
+                                              {:run-id (:agent.run/id run)})))
+                          evidence "Tamaki cycle agent completed documented test gate"]
+                      (review! {:positional [patch-id]
+                                :options {:run (:agent.run/id run)
+                                          :tests evidence}})
+                      (if (:tamaki.loop/auto-approve campaign)
+                        (do
+                          (integrate! {:positional [patch-id]
+                                       :options {:run (:agent.run/id run)
+                                                 :issue issue-id
+                                                 :tests evidence
+                                                 :approve true}})
+                          (append-loop-event!
+                           campaign :loop/cycle-integrated
+                           {:loop/cycle cycle :issue/id issue-id
+                            :patch/id patch-id :agent.run/id (:agent.run/id run)}))
+                        (append-loop-event!
+                         campaign :loop/cycle-reviewed
+                         {:loop/cycle cycle :issue/id issue-id
+                          :patch/id patch-id :agent.run/id (:agent.run/id run)}))
+                      (print-edn {:loop/id id :loop/cycle cycle
+                                  :result (if (:tamaki.loop/auto-approve campaign)
+                                            :integrated :awaiting-approval)
+                                  :issue/id issue-id :patch/id patch-id}))))))))
+        (catch Exception e
+          (append-loop-event! campaign :loop/cycle-failed
+                              {:loop/cycle cycle :error (.getMessage e)
+                               :error/data (ex-data e)})
+          (throw e))))
+    0))
+
+(defn run-loop! [id]
+  (loop []
+    (let [campaign (or (campaign-by-id id)
+                       (throw (ex-info "Unknown loop" {:loop-id id})))
+          reason (agent-loop/stop-reason campaign)]
+      (if reason
+        (do
+          (when (= :active (:tamaki.loop/status campaign))
+            (append-loop-event! campaign :loop/completed {:reason reason}))
+          (print-edn {:loop/id id :status :completed :reason reason})
+          0)
+        (do
+          (try
+            (tick-loop! id)
+            (catch Exception e
+              (binding [*out* *err*]
+                (println "tamaki loop cycle failed:" (.getMessage e)))))
+          (let [next-campaign (campaign-by-id id)]
+            (when-not (agent-loop/stop-reason next-campaign)
+              (Thread/sleep (:tamaki.loop/interval-ms next-campaign))))
+          (recur))))))
+
+(defn loop! [{:keys [positional] :as parsed}]
+  (let [[action id] positional]
+    (case action
+      "start" (start-loop! parsed)
+      "status" (loop-status! id)
+      "tick" (tick-loop! id)
+      "run" (run-loop! id)
+      (throw (ex-info "Usage: tamaki loop start|status|tick|run ..." {})))))
+
 (defn dispatch
   [args]
   (let [[command & rest] args
@@ -347,6 +518,7 @@
       "deliver" (deliver! parsed)
       "review" (review! parsed)
       "integrate" (integrate! parsed)
+      "loop" (loop! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

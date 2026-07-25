@@ -3,6 +3,7 @@
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
             [kotoba.tamaki.delivery-test]
+            [kotoba.tamaki.loop-test]
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.store-test])
   (:gen-class))
@@ -12,6 +13,7 @@
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
                                'kotoba.tamaki.delivery-test
+                               'kotoba.tamaki.loop-test
                                'kotoba.tamaki.store-test)]
     (when (pos? (+ (:fail result) (:error result)))
       (throw (ex-info "Tamaki tests failed" result)))

@@ -132,3 +132,21 @@
            (cli/dispatch ["integrate" "patch-id"
                           "--run" "run-integrate"
                           "--tests" "green"]))))))
+
+(deftest persistent-loop-starts-and-is-queryable
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 5000)]
+      (let [{campaign :value}
+            (call ["loop" "start"
+                   "--project" "/repo"
+                   "--objective" "grow safely"
+                   "--max-cycles" "4"
+                   "--max-failures" "2"])
+            id (:tamaki.loop/id campaign)
+            {status :value} (call ["loop" "status" id])]
+        (is (= :active (:tamaki.loop/status status)))
+        (is (= 4 (:tamaki.loop/max-cycles status)))
+        (is (= 2 (:tamaki.loop/max-failures status)))
+        (is (= [:loop/started] (event-kinds root)))))))
