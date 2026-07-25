@@ -70,15 +70,18 @@
                                     :tamaki.loop/last-error (:error data)
                                     :tamaki.loop/updated-at at))
       :loop/cycle-integrated (-> state
-                                 (dissoc :tamaki.loop/current-cycle)
-                                 (assoc :tamaki.loop/last-result :integrated
-                                        :tamaki.loop/updated-at at))
+                                  (dissoc :tamaki.loop/current-cycle
+                                          :tamaki.loop/last-error)
+                                  (assoc :tamaki.loop/last-result :integrated
+                                         :tamaki.loop/updated-at at))
       :loop/cycle-no-change (-> state
-                                (dissoc :tamaki.loop/current-cycle)
-                                (assoc :tamaki.loop/last-result :no-change
-                                       :tamaki.loop/updated-at at))
+                                 (dissoc :tamaki.loop/current-cycle
+                                         :tamaki.loop/last-error)
+                                 (assoc :tamaki.loop/last-result :no-change
+                                        :tamaki.loop/updated-at at))
       :loop/cycle-reviewed (-> state
-                               (dissoc :tamaki.loop/current-cycle)
+                               (dissoc :tamaki.loop/current-cycle
+                                       :tamaki.loop/last-error)
                                (assoc :tamaki.loop/status :paused
                                       :tamaki.loop/last-result :reviewed
                                       :tamaki.loop/updated-at at))

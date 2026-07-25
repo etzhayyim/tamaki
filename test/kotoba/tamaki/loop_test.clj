@@ -46,6 +46,21 @@
         (is (= status (:tamaki.loop/status result)))
         (is (nil? (:tamaki.loop/current-cycle result)))))))
 
+(deftest successful-cycle-clears-stale-error
+  (let [campaign (loop/campaign {:objective "recover cleanly"
+                                 :project "/repo"} 1)
+        failed (loop/apply-event
+                campaign
+                (loop/loop-event campaign :loop/cycle-failed 2
+                                 {:error "transient failure"}))]
+    (doseq [kind [:loop/cycle-integrated
+                  :loop/cycle-no-change
+                  :loop/cycle-reviewed]]
+      (let [recovered (loop/apply-event
+                       failed
+                       (loop/loop-event campaign kind 3 {}))]
+        (is (nil? (:tamaki.loop/last-error recovered)))))))
+
 (deftest campaign-rejects-invalid-bounds
   (doseq [[field value]
           [[:max-cycles 0]
