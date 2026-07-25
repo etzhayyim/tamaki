@@ -341,7 +341,11 @@
                                  "git rev-parse")
                    :out str/trim)
           reviewed-commit (patch-commit-id (:agent.run/id run) patch-id)]
-      (when-not (= head reviewed-commit)
+      (when-not (and reviewed-commit
+                     (zero? (:exit
+                             (delivery/execute!
+                              (delivery/git-ancestor-command reviewed-commit head)
+                              (:agent.run/project run)))))
         (run-process! run (delivery/git-merge-patch-command patch-id)
                       "git merge")))
     (run-process! run (delivery/push-canonical-command branch)

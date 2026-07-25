@@ -15,7 +15,9 @@
          (delivery/git-merge-patch-command
           "0123456789012345678901234567890123456789")))
   (is (= ["git" "push" "-o" "no-sync" "rad" "main"]
-         (delivery/push-canonical-command "main"))))
+         (delivery/push-canonical-command "main")))
+  (is (= ["git" "merge-base" "--is-ancestor" "a" "b"]
+         (delivery/git-ancestor-command "a" "b"))))
 
 (deftest porcelain-paths-are-explicit
   (is (= ["src/a.clj" "test/b.clj" "new.clj"]

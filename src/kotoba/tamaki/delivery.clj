@@ -52,6 +52,8 @@
 (defn git-add-command [paths] (into ["git" "add" "--"] paths))
 (defn git-commit-command [message] ["git" "commit" "-m" message])
 (defn git-head-command [] ["git" "rev-parse" "HEAD"])
+(defn git-ancestor-command [ancestor descendant]
+  ["git" "merge-base" "--is-ancestor" ancestor descendant])
 (defn patch-create-command [title]
   ["git" "-c" "core.editor=true" "push"
    "-o" "patch.draft"
