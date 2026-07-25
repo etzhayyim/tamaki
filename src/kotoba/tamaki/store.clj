@@ -52,7 +52,9 @@
   (let [f (event-file root)]
     (if-not (.exists f)
       []
-      (let [lines (->> (str/split-lines (slurp f))
+      (let [content (slurp f)
+            complete-tail? (str/ends-with? content "\n")
+            lines (->> (str/split-lines content)
                        (remove str/blank?)
                        vec)]
         (reduce-kv
@@ -60,9 +62,11 @@
            (try
              (conj events (edn/read-string line))
              (catch Exception error
-               ;; An interrupted append may leave only the final EDN line
-               ;; incomplete. Keep committed events but expose older damage.
-               (if (= index (dec (count lines)))
+               ;; An interrupted append may leave only the unterminated final
+               ;; EDN line incomplete. Keep committed events, but never hide
+               ;; corruption in a line whose terminating newline was written.
+               (if (and (= index (dec (count lines)))
+                        (not complete-tail?))
                  events
                  (throw error)))))
          []
