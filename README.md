@@ -47,6 +47,37 @@ bin/tamaki doctor
 bin/tamaki contract
 ```
 
+## Concurrent runner pool
+
+Tamaki treats each subscription CLI/account as a distinct, durable worker.
+Built-ins are `codex`, `claude` (`claude -p`), and `claude-zai`. Register
+additional Claude accounts without putting credentials in the event log:
+
+```sh
+export TAMAKI_CLAUDE_ACCOUNTS='claude-work=$HOME/.claude-work,claude-lab=$HOME/.claude-lab'
+bin/tamaki runners
+
+bin/tamaki swarm "inspect and improve one bounded issue" \
+  --project "$PWD" \
+  --runners codex,claude,claude-zai,claude-work,claude-lab \
+  --execute
+```
+
+`swarm --execute` creates one detached git worktree per runner and starts all
+workers concurrently. The AgentRun stores only the runner ID and model; account
+configuration is resolved at execution time through `CLAUDE_CONFIG_DIR`.
+Worktrees are intentionally retained for review/integration.
+
+For a persistent pool, use `~/.config/tamaki/runners.edn` (or
+`TAMAKI_RUNNERS_FILE`):
+
+```clojure
+[{:id "claude-work" :model "claude:sonnet" :kind :claude-account
+  :env {"CLAUDE_CONFIG_DIR" "/Users/me/.claude-work"}}
+ {:id "claude-lab" :model "claude:opus" :kind :claude-account
+  :env {"CLAUDE_CONFIG_DIR" "/Users/me/.claude-lab"}}]
+```
+
 `submit` is safe by default: it only appends a queued run. Add `--execute` or
 invoke `run` separately to cross the execution boundary.
 
@@ -115,7 +146,7 @@ cycle bounded and independently auditable:
 bin/tamaki loop start \
   --project "$PWD" \
   --objective "raise maturity, coverage, reliability, and documentation" \
-  --model codex: \
+  --runner claude-work \
   --max-cycles 10 --max-failures 3 --interval-ms 60000
 
 bin/tamaki loop tick <loop-id>   # exactly one resumable cycle

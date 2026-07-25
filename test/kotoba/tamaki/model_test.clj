@@ -4,10 +4,14 @@
 
 (deftest agent-run-contract
   (let [run (model/agent-run {:goal "fix it"
+                              :source-project "/source"
                               :project "/tmp/example"
+                              :runner "claude-a"
                               :capabilities #{:git}}
                              1000)]
     (is (= :queued (:agent.run/status run)))
+    (is (= "claude-a" (:agent.run/runner run)))
+    (is (= "/source" (:agent.run/source-project run)))
     (is (= #{:git} (:agent.run/required-capabilities run)))
     (is (= 12 (get-in run [:agent.run/budget :max-turns])))))
 
@@ -30,4 +34,3 @@
         folded (get (model/fold-events events) "run-1")]
     (is (= :failed (:agent.run/status folded)))
     (is (model/resumable? folded))))
-

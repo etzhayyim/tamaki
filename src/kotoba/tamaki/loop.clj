@@ -11,7 +11,7 @@
    (str "loop-" now-ms "-" (subs (clojure.string/replace entropy #"-" "") 0 8))))
 
 (defn campaign
-  [{:keys [id objective project model max-cycles interval-ms max-failures
+  [{:keys [id objective project model runner max-cycles interval-ms max-failures
            auto-approve]
     :or {max-cycles 10 interval-ms 60000 max-failures 3 auto-approve false}}
    now-ms]
@@ -33,6 +33,7 @@
    :tamaki.loop/objective objective
    :tamaki.loop/project project
    :tamaki.loop/model model
+   :tamaki.loop/runner runner
    :tamaki.loop/max-cycles max-cycles
    :tamaki.loop/interval-ms interval-ms
    :tamaki.loop/max-failures max-failures

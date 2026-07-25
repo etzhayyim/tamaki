@@ -42,6 +42,21 @@
         (is (= id (get-in agents [0 :run :agent.run/id])))
         (is (= [:run/submitted] (event-kinds root)))))))
 
+(deftest runner-pool-submits-distinct-durable-workers
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [{:keys [value exit]}
+            (call ["swarm" "inspect safely" "--project" "/tmp/project"
+                   "--runners" "codex,claude-zai"])]
+        (is (zero? exit))
+        (is (= #{"codex" "claude-zai"}
+               (set (map :agent.run/runner (:runs value)))))
+        (is (= #{"codex:" "claude-zai:"}
+               (set (map :agent.run/model (:runs value)))))
+        (is (= 2 (count (store/read-local-events root))))))))
+
 (deftest successful-and-failed-execution
   (doseq [[runtime-exit expected-status terminal-kind]
           [[0 :succeeded :run/succeeded]
@@ -142,6 +157,7 @@
             (call ["loop" "start"
                    "--project" "/repo"
                    "--objective" "grow safely"
+                   "--runner" "claude-zai"
                    "--max-cycles" "4"
                    "--max-failures" "2"])
             id (:tamaki.loop/id campaign)
@@ -149,6 +165,8 @@
         (is (= :active (:tamaki.loop/status status)))
         (is (= 4 (:tamaki.loop/max-cycles status)))
         (is (= 2 (:tamaki.loop/max-failures status)))
+        (is (= "claude-zai" (:tamaki.loop/runner status)))
+        (is (= "claude-zai:" (:tamaki.loop/model status)))
         (is (= [:loop/started] (event-kinds root)))))))
 
 (deftest patch-commit-is-resolved-from-run-receipt

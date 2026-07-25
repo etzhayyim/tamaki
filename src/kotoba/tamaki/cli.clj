@@ -8,6 +8,7 @@
             [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
+            [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.store :as store])
   (:gen-class))
 
@@ -22,6 +23,8 @@
        "  tamaki status [run-id]\n"
        "  tamaki resume <run-id>\n"
        "  tamaki agents [run-id]\n"
+       "  tamaki runners\n"
+       "  tamaki swarm <goal> --project PATH [--runners IDS] [--execute]\n"
        "  tamaki issue create|show ...\n"
        "  tamaki work issue <issue-id> --project PATH [--execute]\n"
        "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
@@ -35,7 +38,7 @@
        "  tamaki doctor\n"
        "  tamaki contract\n\n"
        "Options:\n"
-       "  --repo OWNER/REPO --pin SHA --node NAME|auto --model MODEL\n"
+       "  --repo OWNER/REPO --pin SHA --node NAME|auto --model MODEL --runner ID\n"
        "  --requires git,nbb,clojure --parent RUN-ID --execute\n"))
 
 (defn parse-args
@@ -75,6 +78,7 @@
   [{:keys [positional options]}]
   (let [goal (first positional)
         mode (keyword (or (:mode options) "local"))
+        runner (when-let [id (:runner options)] (runners/profile id))
         requires (if-let [r (:requires options)]
                    (set (map keyword (remove str/blank? (str/split r #","))))
                    (if (= mode :fleet) #{:git :nbb} #{:git}))
@@ -85,7 +89,8 @@
               :pin (:pin options)
               :mode mode
               :node (keyword (or (:node options) "auto"))
-              :model (:model options)
+              :model (or (:model options) (:model runner))
+              :runner (:id runner)
               :capabilities requires
               :parent (:parent options)}
              (now))]
@@ -174,12 +179,14 @@
                     {:run-id (:agent.run/id run)
                      :status (:agent.run/status run)})))
   (let [report (adapters/readiness)
-        mode (:agent.run/mode run)]
+        mode (:agent.run/mode run)
+        runner (when-let [id (:agent.run/runner run)] (runners/profile id))]
     (when-not (adapters/ready-for? mode report)
       (throw (ex-info "Runtime is not ready" {:mode mode :doctor report})))
     (let [leased (model/transition run :leased (now)
                                    {:agent.run/worker
-                                    (or (System/getenv "TAMAKI_WORKER_ID")
+                                    (or (:id runner)
+                                        (System/getenv "TAMAKI_WORKER_ID")
                                         (.getHostName (java.net.InetAddress/getLocalHost)))})
           _ (emit! run :run/leased
                    (select-keys leased [:agent.run/worker :agent.run/node]))
@@ -188,8 +195,11 @@
                  (adapters/local-command leased))
           _ (emit! leased :run/started {:agent.run/command argv})
           exit (binding [adapters/*process-env*
-                         {"KC_LOOP_ID" (:agent.run/id run)
-                          "KC_SESSION" (:agent.run/id run)}]
+                         (merge
+                          {"KC_LOOP_ID" (:agent.run/id run)
+                           "KC_SESSION" (:agent.run/id run)
+                           "KC_WORKER_ID" (:agent.run/worker leased)}
+                          (:env runner))]
                  (adapters/execute! argv
                                     (when (= mode :fleet)
                                       (adapters/sibling "kotoba-fleet"))))
@@ -201,6 +211,67 @@
                        :agent.run/status (if (zero? exit) :succeeded :failed)))
       exit)))
 
+(defn runners! []
+  (print-edn
+   {:runners
+    (mapv (fn [profile]
+            (assoc (runners/safe-profile profile)
+                   :available
+                   (adapters/command-exists?
+                    (case (:kind profile)
+                      :codex "codex"
+                      :claude-zai "claude-zai"
+                      "claude"))))
+          (runners/profiles))}))
+
+(defn swarm!
+  [{:keys [positional options]}]
+  (let [goal (first positional)
+        project (:project options)
+        profiles (runners/selected (:runners options))
+        swarm-id (subs (str (random-uuid)) 0 8)]
+    (when (str/blank? goal)
+      (throw (ex-info "swarm requires a goal" {})))
+    (when (str/blank? project)
+      (throw (ex-info "swarm requires --project PATH" {})))
+    (let [runs
+          (mapv
+           (fn [profile]
+             (let [worktree (if (:execute options)
+                              (runners/prepare-worktree!
+                               project swarm-id (:id profile))
+                              project)
+                   run (model/agent-run
+                        {:goal goal :project worktree :source-project project
+                         :mode :local
+                         :model (:model profile) :runner (:id profile)
+                         :capabilities #{:git}
+                         :parent (str "swarm-" swarm-id)}
+                        (now))]
+               (emit! run :run/submitted {:run run :swarm/id swarm-id})
+               run))
+           profiles)]
+      (if (:execute options)
+        (let [results
+              (->> runs
+                   (mapv (fn [run]
+                           (future
+                             {:run-id (:agent.run/id run)
+                              :runner (:agent.run/runner run)
+                              :project (:agent.run/project run)
+                              :exit (execute-run! run)})))
+                   (mapv deref))]
+          (print-edn {:swarm/id swarm-id :results results})
+          (if (every? #(zero? (:exit %)) results) 0 1))
+        (do
+          (print-edn
+           {:swarm/id swarm-id
+            :runs (mapv #(select-keys
+                          % [:agent.run/id :agent.run/runner
+                             :agent.run/model :agent.run/project])
+                        runs)})
+          0)))))
+
 (defn status!
   [id]
   (if id
@@ -211,6 +282,7 @@
                     (mapv #(select-keys %
                                         [:agent.run/id :agent.run/status
                                          :agent.run/mode :agent.run/node
+                                         :agent.run/runner :agent.run/model
                                          :agent.run/goal :agent.run/updated-at]))))))
 
 (defn resume!
@@ -428,10 +500,12 @@
       0)))
 
 (defn start-loop! [{:keys [options]}]
-  (let [campaign (agent-loop/campaign
+  (let [runner (when-let [id (:runner options)] (runners/profile id))
+        campaign (agent-loop/campaign
                   {:objective (:objective options)
                    :project (:project options)
-                   :model (:model options)
+                   :model (or (:model options) (:model runner))
+                   :runner (:id runner)
                    :max-cycles (parse-long-option options :max-cycles 10)
                    :interval-ms (parse-long-option options :interval-ms 60000)
                    :max-failures (parse-long-option options :max-failures 3)
@@ -484,6 +558,7 @@
                               "Criteria:\n- " (str/join "\n- " criteria))
                    :project (:agent.run/project worker)
                    :mode :local :model (:agent.run/model worker)
+                   :runner (:agent.run/runner worker)
                    :parent (:agent.run/id worker)
                    :capabilities #{:git :radicle}}
                   (now))
@@ -600,6 +675,7 @@
                                                  [:issue :issue/blockers])))
                       :project project :mode :local
                       :model (:tamaki.loop/model campaign)
+                      :runner (:tamaki.loop/runner campaign)
                       :capabilities #{:git :radicle}}
                      (now))]
             (store/append-event! (store/default-root)
@@ -728,6 +804,8 @@
       "status" (do (status! (first (:positional parsed))) 0)
       "resume" (resume! (first (:positional parsed)))
       "agents" (do (agents! (first (:positional parsed))) 0)
+      "runners" (do (runners!) 0)
+      "swarm" (swarm! parsed)
       "issue" (issue! parsed)
       "work" (if (= "issue" (first (:positional parsed)))
                  (work-issue! parsed)

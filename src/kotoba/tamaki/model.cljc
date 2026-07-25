@@ -24,7 +24,7 @@
    (str "run-" now-ms "-" (subs (str/replace entropy #"-" "") 0 8))))
 
 (defn agent-run
-  [{:keys [id goal project repo pin mode node model capabilities budget parent]
+  [{:keys [id goal project source-project repo pin mode node model runner capabilities budget parent]
     :or {mode :local node :auto capabilities #{} budget {}}}
    now-ms]
   (when (str/blank? goal)
@@ -33,11 +33,13 @@
    :agent.run/id (or id (run-id now-ms))
    :agent.run/goal goal
    :agent.run/project project
+   :agent.run/source-project source-project
    :agent.run/repo repo
    :agent.run/pin pin
    :agent.run/mode mode
    :agent.run/node node
    :agent.run/model model
+   :agent.run/runner runner
    :agent.run/required-capabilities (set capabilities)
    :agent.run/budget (merge {:max-turns 12
                              :max-tool-calls 30
@@ -101,4 +103,3 @@
 (defn resumable?
   [run]
   (contains? #{:failed :checkpointed :held} (:agent.run/status run)))
-
