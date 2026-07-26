@@ -183,6 +183,37 @@ review of the resulting patch; integration is attempted only after it passes
 the criteria without changing the tree. `:effect/measured` records the
 before/after operational signal so later cycles can respond to the feedback.
 
+## Revenue control plane
+
+Tamaki treats commercial outcomes as durable facts rather than agent prose.
+Targets live in `actors/revenue-targets.edn`; record a periodic observation
+from an approved analytics or accounting export:
+
+```sh
+cp examples/revenue-observation.edn /tmp/revenue-week.edn
+# Fill the stocks, period flows, costs, and confidence with observed values.
+bin/tamaki kpi observe --file /tmp/revenue-week.edn
+bin/tamaki kpi status
+```
+
+The control plane projects traffic, qualified leads, conversations, proposals,
+won and active customers, MRR, and cash as stocks. Lead creation, activation,
+wins, churn, experiments, accepted patches, model/agent cost, operating cost,
+and MRR change are period flows. Its North Star is:
+
+```text
+risk-adjusted incremental MRR
+= delta MRR * confidence
+ - churn-risk MRR - operational cost - agent cost
+```
+
+Target attainment produces a bounded `0..1` control score. Revenue gap,
+experiment cadence, churn, confidence, and cost become active-inference
+signals for Radicle Issue selection. Observed business pressure may increase
+actor capacity within its declared min/max bounds. Missing KPI data stays
+`:unobserved`: it creates prioritization pressure to instrument the system but
+does not by itself scale the actor pool.
+
 ## Dogfood
 
 Run Tamaki against its own checkout, then inspect the durable lifecycle:

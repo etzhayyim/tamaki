@@ -72,6 +72,15 @@
                             (range 4))]
         (is (= 5 (actor/effective-desired scaled many-held)))))))
 
+(deftest effective-desired-scales-on-business-control-pressure
+  (let [controlled (-> spec
+                       (assoc-in [:actor/scale :scale-up-on
+                                  :business-pressure] 0.65)
+                       (assoc :actor/control-pressure 0.8))]
+    (is (= 5 (actor/effective-desired controlled [])))
+    (is (= 3 (actor/effective-desired
+              (assoc controlled :actor/control-pressure 0.2) [])))))
+
 (deftest scale-down-honours-idle-grace-period
   (let [scaled (assoc-in spec [:actor/scale]
                          {:min 1 :desired 1 :max 5

@@ -71,17 +71,23 @@
 
 (defn- scale-up-extra
   "Extra replicas warranted by declared :scale-up-on pressure."
-  [scale active]
+  [scale active control-pressure]
   (let [{:keys [queue-depth blocker-count]} (:scale-up-on scale)
         queued (count (filter #(= :queued (:agent.run/status %)) active))
-        blocked (count (filter #(= :held (:agent.run/status %)) active))]
+        blocked (count (filter #(= :held (:agent.run/status %)) active))
+        business-threshold (get-in scale [:scale-up-on :business-pressure])]
     (cond-> 0
       (and queue-depth (integer? queue-depth) (pos? queue-depth)
            (>= queued queue-depth))
       (+ (max 1 (inc (- queued queue-depth))))
       (and blocker-count (integer? blocker-count) (pos? blocker-count)
            (>= blocked blocker-count))
-      (+ blocked))))
+      (+ blocked)
+      (and (number? business-threshold)
+           (>= (double (or control-pressure 0.0))
+               (double business-threshold)))
+      (+ (max 1 (long (Math/ceil
+                       (* 2.0 (double (or control-pressure 0.0))))))))))
 
 (defn effective-desired
   "Baseline :desired raised by live scale-up pressure, clamped to [min, max].
@@ -97,7 +103,9 @@
         {:keys [min desired] max-capacity :max} scale
         active (->> (actor-runs spec runs)
                     (filterv #(contains? active-statuses (:agent.run/status %))))
-        raised (+ desired (scale-up-extra scale active))]
+        raised (+ desired
+                  (scale-up-extra scale active
+                                  (:actor/control-pressure spec)))]
     (-> raised (clojure.core/min max-capacity) (clojure.core/max min))))
 
 (defn- cancel-candidates

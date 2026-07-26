@@ -9,7 +9,8 @@
                     :integrate :voice-required
                     :external-effect :voice-required}
  :actor/scale {:min 1 :desired 2 :max 8
-               :scale-up-on {:queue-depth 3 :blocker-count 2}
+               :scale-up-on {:queue-depth 3 :blocker-count 2
+                             :business-pressure 0.65}
                :scale-down-after-ms 300000}
  :actor/runners [{:runner :codex :weight 3}
                  {:runner :claude :weight 2}

@@ -1,0 +1,12 @@
+{:target/window-days 30
+ ;; Bootstrap control targets. Replace these with the portfolio's approved
+ ;; commercial plan; Tamaki treats missing observations as unknown, not zero.
+ :target/mrr-jpy 1000000
+ :target/risk-adjusted-delta-mrr-jpy 100000
+ :target/qualified-leads 40
+ :target/activation-rate 0.35
+ :target/paid-conversion-rate 0.10
+ :target/max-churn-rate 0.03
+ :target/experiments-per-week 3
+ :target/max-experiment-cycle-hours 72
+ :target/max-agent-cost-per-patch-jpy 5000}

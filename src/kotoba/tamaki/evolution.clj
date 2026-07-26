@@ -56,13 +56,17 @@
            {:evolution/status status :evolution/updated-at now-ms})))
 
 (defn fitness
-  [{:keys [tests assertions failures coverage maturity revenue-risk]}]
+  [{:keys [tests assertions failures coverage maturity revenue-risk
+           business-control-score validated-experiments agent-cost-index]}]
   (+ (* 0.18 (double (or tests 0)))
      (* 0.02 (double (or assertions 0)))
      (* -1.5 (double (or failures 0)))
      (* 1.0 (double (or coverage 0)))
      (* 1.0 (double (or maturity 0)))
-     (* -1.0 (double (or revenue-risk 0)))))
+     (* -1.0 (double (or revenue-risk 0)))
+     (* 10.0 (double (or business-control-score 0)))
+     (* 1.0 (double (or validated-experiments 0)))
+     (* -2.0 (double (or agent-cost-index 0)))))
 
 (defn improved? [before after]
   (and (zero? (or (:failures after) 0))

@@ -2,6 +2,7 @@
   (:require [clojure.test :as test]
             [kotoba.tamaki.active-inference-test]
             [kotoba.tamaki.actor-test]
+            [kotoba.tamaki.business-test]
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
             [kotoba.tamaki.delivery-test]
@@ -19,6 +20,7 @@
   (let [result (test/run-tests 'kotoba.tamaki.model-test
                                'kotoba.tamaki.active-inference-test
                                'kotoba.tamaki.actor-test
+                               'kotoba.tamaki.business-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
                                'kotoba.tamaki.delivery-test

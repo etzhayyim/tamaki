@@ -6,6 +6,7 @@
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.active-inference :as active-inference]
             [kotoba.tamaki.actor :as actor]
+            [kotoba.tamaki.business :as business]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
@@ -40,6 +41,8 @@
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
+       "  tamaki kpi status [--targets FILE]\n"
+       "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
@@ -84,6 +87,35 @@
 (defn print-edn [x]
   (pprint/pprint x))
 
+(defn default-business-targets-path []
+  (.getAbsolutePath (io/file "actors" "revenue-targets.edn")))
+
+(defn business-targets [options]
+  (business/read-targets
+   (or (:targets options) (default-business-targets-path))))
+
+(defn business-summary
+  ([] (business-summary {}))
+  ([options] (business/summary (events) (business-targets options))))
+
+(defn kpi!
+  [{:keys [positional options]}]
+  (case (first positional)
+    "status"
+    (do (print-edn (business-summary options)) 0)
+
+    "observe"
+    (let [path (:file options)]
+      (when (str/blank? path)
+        (throw (ex-info "kpi observe requires --file OBSERVATION.edn" {})))
+      (let [observation (edn/read-string (slurp (io/file path)))
+            event (business/event observation (now))]
+        (store/append-event! (store/default-root) event)
+        (print-edn (business-summary options))
+        0))
+
+    (throw (ex-info "Usage: tamaki kpi status|observe ..." {}))))
+
 (declare execute-run! submit! require-run!)
 
 (defn consult!
@@ -109,7 +141,13 @@
     (submit! (assoc parsed :positional [goal]))))
 
 (defn actor-status [spec]
-  (actor/reconcile-plan spec (remove nil? (vals (runs))) (now)))
+  (let [summary (business-summary)
+        control (business/control-signals summary)
+        controlled (assoc spec :actor/control-pressure
+                          (if (= :observed (:business/status summary))
+                            (:business-pressure control)
+                            0.0))]
+    (actor/reconcile-plan controlled (remove nil? (vals (runs))) (now))))
 
 (defn reconcile-actor!
   [spec execute?]
@@ -1120,13 +1158,30 @@
                         (delivery/execute! (delivery/issue-list-command) project)
                         "cycle issue discovery")
                 existing (intelligence/parse-issue-list (:out listed))
-                dynamics (intelligence/dynamics-signals
-                          {:failures (:tamaki.loop/failures campaign)
-                           :max-failures (:tamaki.loop/max-failures campaign)
-                           :active-runs (count (filter #(= :running
-                                                          (:agent.run/status %))
-                                                     (vals (runs))))
-                           :open-issues (count existing)})
+                operational-dynamics
+                (intelligence/dynamics-signals
+                 {:failures (:tamaki.loop/failures campaign)
+                  :max-failures (:tamaki.loop/max-failures campaign)
+                  :active-runs (count (filter #(= :running
+                                                 (:agent.run/status %))
+                                            (vals (runs))))
+                  :open-issues (count existing)})
+                business-state (business-summary)
+                business-signals (business/control-signals business-state)
+                work-title
+                (if (= :unobserved (:business/status business-state))
+                  (str "ASI cycle " cycle
+                       ": establish an observed revenue KPI baseline")
+                  title)
+                dynamics
+                (-> (merge intelligence/default-signals
+                           business-signals operational-dynamics)
+                    (assoc :urgency
+                           (max (:urgency operational-dynamics)
+                                (:urgency business-signals)))
+                    (assoc :feedback-pressure
+                           (max (:feedback-pressure operational-dynamics)
+                                (:business-pressure business-signals))))
                 candidates
                 (->> existing
                      (mapv
@@ -1183,7 +1238,7 @@
                          (delivery/succeeded!
                           (delivery/execute!
                            (delivery/issue-create-command
-                            title
+                            work-title
                             (str "Managed by: tamaki-supervisor\n\n"
                                  (agent-loop/cycle-goal campaign cycle "<pending>")
                                  "\n\nAcceptance: "
@@ -1194,11 +1249,11 @@
                              (delivery/output-id opened))
                 decision (or selected
                              {:issue (intelligence/issue-node
-                                      {:id issue-id :title title
+                                      {:id issue-id :title work-title
                                        :criteria criteria :signals dynamics})
                               :score (intelligence/leverage-score
                                       (intelligence/issue-node
-                                       {:id issue-id :title title
+                                       {:id issue-id :title work-title
                                         :criteria criteria :signals dynamics}))
                               :candidate-count 1 :blocked-count 0})
                 run (model/agent-run
@@ -1228,6 +1283,11 @@
                       {:issue/id issue-id
                        :issue/selection decision
                        :issue/dynamics dynamics
+                       :business/control
+                       (select-keys business-state
+                                    [:business/status :business/kpis
+                                     :business/progress
+                                     :business/control-score])
                        :issue/criteria criteria})
             (let [before (quality-snapshot)]
             (let [exit (execute-run! run)
@@ -1255,7 +1315,7 @@
                     (deliver! {:positional [(:agent.run/id run)]
                                :options {:issue issue-id
                                          :paths (str/join "," paths)
-                                         :message title}})
+                                         :message work-title}})
                     (let [patch-id (or
                                     (get-in
                                      (latest-run-event (:agent.run/id run)
@@ -1383,6 +1443,7 @@
       "consult" (consult! parsed)
       "voice" (or (voice! parsed) 0)
       "actor" (actor! parsed)
+      "kpi" (kpi! parsed)
       "evolve" (evolve! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))

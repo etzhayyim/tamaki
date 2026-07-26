@@ -38,6 +38,35 @@
                   (call ["consult" "CI confirmation" "--silent"]))))
       (is (false? (:voice? (second @requests)))))))
 
+(deftest business-kpi-observation-is-durable-and-queryable
+  (let [root (temp-root)
+        observation (java.io.File/createTempFile "tamaki-kpi-" ".edn")
+        targets (java.io.File/createTempFile "tamaki-targets-" ".edn")]
+    (spit observation
+          (pr-str {:period-days 7
+                   :stocks {:mrr-jpy 500000 :qualified-leads 20}
+                   :flows {:delta-mrr-jpy 100000
+                           :experiments-shipped 2}
+                   :rates {:confidence 0.8}}))
+    (spit targets
+          (pr-str {:target/mrr-jpy 1000000
+                   :target/risk-adjusted-delta-mrr-jpy 100000
+                   :target/experiments-per-week 3
+                   :target/activation-rate 0.3
+                   :target/paid-conversion-rate 0.1
+                   :target/max-churn-rate 0.05}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [{observed :value}
+            (call ["kpi" "observe" "--file" (.getPath observation)
+                   "--targets" (.getPath targets)])
+            {status :value}
+            (call ["kpi" "status" "--targets" (.getPath targets)])]
+        (is (= :observed (:business/status observed)))
+        (is (= observed status))
+        (is (= [:business/observed] (event-kinds root)))))))
+
 (deftest supervisor-ensure-reuses-one-compatible-loop
   (let [root (temp-root)
         args ["loop" "ensure"
