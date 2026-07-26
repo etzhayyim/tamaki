@@ -75,7 +75,17 @@ trap cleanup EXIT INT TERM
 
 (
   while true; do
-    bin/tamaki actor reconcile "$actor_spec" --execute || true
+    actor_specs=("$actor_spec")
+    if [[ -z "${TAMAKI_SUPERVISOR_ACTOR_SPEC:-}" ]]; then
+      for discovered_spec in "$tamaki_root"/actors/*.edn; do
+        [[ "$discovered_spec" == "$actor_spec" ]] && continue
+        grep -q ':actor/id' "$discovered_spec" || continue
+        actor_specs+=("$discovered_spec")
+      done
+    fi
+    for current_actor_spec in "${actor_specs[@]}"; do
+      bin/tamaki actor reconcile "$current_actor_spec" --execute || true
+    done
     sleep "$actor_interval_seconds"
   done
 ) &

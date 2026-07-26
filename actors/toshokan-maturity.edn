@@ -1,0 +1,18 @@
+{:actor/id :toshokan/maturity-curator
+ :actor/type :kotoba-lang/toshokan
+ :actor/project "../../../orgs/kotoba-lang/toshokan"
+ :actor/objective
+ "Walk the Toshokan issue topology from unblocked corpus and fulltext work toward measurable, queryable bibliographic maturity."
+ :actor/capabilities #{:radicle :issue-triage :implementation :review}
+ :actor/governor :tamaki/toshokan-governor
+ :actor/hil-policy {:issue-create :autonomous
+                    :patch-create :autonomous
+                    :integrate :voice-required
+                    :external-effect :voice-required}
+ :actor/scale {:min 1 :desired 1 :max 4
+               :scale-up-on {:queue-depth 3 :blocker-count 2}
+               :scale-down-after-ms 300000}
+ :actor/runners [{:runner :codex :weight 3}
+                 {:runner :claude :weight 2}
+                 {:runner :claude-zai :weight 2}
+                 {:runner :grok :weight 1}]}
