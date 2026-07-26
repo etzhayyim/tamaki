@@ -10,6 +10,7 @@
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
+            [kotoba.tamaki.loop-registry :as loop-registry]
             [kotoba.tamaki.lineage :as lineage]
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
@@ -38,7 +39,7 @@
        "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
-       "  tamaki loop start|ensure|status|stop-active|tick|run ...\n"
+       "  tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ...\n"
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
@@ -71,7 +72,9 @@
         (if (str/starts-with? x "--")
           (if (contains? #{"--execute" "--approve" "--auto-approve" "--voice"
                            "--silent"
-                           "--continuous"} x)
+                           "--continuous"
+                           "--dry-run"
+                           "--skip-invalid"} x)
             (recur (rest xs) positional
                    (assoc options (keyword (subs x 2)) true))
             (recur more positional
@@ -998,7 +1001,27 @@
       (print-edn receipt)
       0)))
 
-(defn start-loop! [{:keys [options]}]
+(defn loop-spec-from-options
+  "Load a LoopSpec when --spec PATH or a positional *.edn path is present.
+  Returns nil when the caller is using ad-hoc CLI flags only."
+  [{:keys [positional options]}]
+  (let [path (or (:spec options)
+                 (first (filter #(and (string? %)
+                                      (str/ends-with? % ".edn"))
+                                positional)))]
+    (when-not (str/blank? path)
+      (loop-registry/read-spec path))))
+
+(defn merge-loop-options
+  "Compose ensure/start options: LoopSpec is the base; CLI flags override."
+  [parsed]
+  (if-let [spec (loop-spec-from-options parsed)]
+    (loop-registry/ensure-options spec (:options parsed))
+    (:options parsed)))
+
+(defn start-loop-with-options!
+  "Start a campaign from a fully resolved options map (not raw CLI parse)."
+  [options]
   (let [created-at (now)
         individual
         (when-let [given-name (:organism-name options)]
@@ -1023,18 +1046,31 @@
                    :max-failures (parse-long-option options :max-failures 3)
                    :auto-approve (boolean (:auto-approve options))
                    :continuous (boolean (:continuous options))
-                   :organism individual}
+                   :organism individual
+                   :spec-id (:spec-id options)
+                   :spec-path (:spec-path options)}
                   created-at)]
     (append-loop-event! campaign :loop/started {:campaign campaign})
     (print-edn campaign)
     0))
 
+(defn start-loop!
+  "Start from a CLI parse map (`:options` / optional `:positional` + `--spec`)."
+  [parsed]
+  (start-loop-with-options!
+   (if (and (map? parsed) (contains? parsed :positional))
+     (merge-loop-options parsed)
+     (or (:options parsed) parsed))))
+
 (defn ensure-loop!
   "Return one canonical campaign for the requested supervisor configuration.
-  Stale active campaigns are durably completed instead of accumulating after
-  launchd restarts."
-  [{:keys [options]}]
-  (let [profiles (cond
+  Prefer --spec PATH (EDN LoopSpec). Stale active campaigns on the same
+  project are durably completed instead of accumulating after launchd restarts."
+  [parsed]
+  (let [options (if (and (map? parsed) (contains? parsed :positional))
+                  (merge-loop-options parsed)
+                  (or (:options parsed) parsed))
+        profiles (cond
                    (:runners options) (runners/selected (:runners options))
                    (:runner options) [(runners/profile (:runner options))]
                    :else [])
@@ -1043,28 +1079,118 @@
                     (filter #(= :active (:tamaki.loop/status %))))
         compatible?
         (fn [campaign]
-          (let [individual (:tamaki.loop/organism campaign)]
-            (and (= (:project options) (:tamaki.loop/project campaign))
-               (= (:objective options) (:tamaki.loop/objective campaign))
-               (= expected-runners (:tamaki.loop/runners campaign))
-               (= (boolean (:auto-approve options))
-                  (:tamaki.loop/auto-approve campaign))
-               (= (:organism-name options)
-                  (:organism/given-name individual))
-               (= (parse-long-option options :organism-generation 1)
-                  (:organism/generation individual))
-               (= (:organism-parent options)
-                  (:organism/parent individual)))))
+          (if-let [spec-id (:spec-id options)]
+            (and (= (str spec-id) (str (:tamaki.loop/spec-id campaign)))
+                 (= (:project options) (:tamaki.loop/project campaign)))
+            (let [individual (:tamaki.loop/organism campaign)]
+              (and (= (:project options) (:tamaki.loop/project campaign))
+                   (= (:objective options) (:tamaki.loop/objective campaign))
+                   (= expected-runners (:tamaki.loop/runners campaign))
+                   (= (boolean (:auto-approve options))
+                      (:tamaki.loop/auto-approve campaign))
+                   (= (:organism-name options)
+                      (:organism/given-name individual))
+                   (= (parse-long-option options :organism-generation 1)
+                      (:organism/generation individual))
+                   (= (:organism-parent options)
+                      (:organism/parent individual))))))
         canonical (last (sort-by :tamaki.loop/updated-at
                                  (filter compatible? active)))]
     (doseq [campaign active
-            :when (not= (:tamaki.loop/id campaign)
-                        (:tamaki.loop/id canonical))]
+            :when (and (not= (:tamaki.loop/id campaign)
+                             (:tamaki.loop/id canonical))
+                       (if-let [spec-id (:spec-id options)]
+                         ;; Registry-backed: only retire duplicate instances of
+                         ;; this LoopSpec so other EDN loops stay active.
+                         (= (str spec-id)
+                            (str (:tamaki.loop/spec-id campaign)))
+                         ;; Legacy CLI ensure: retire other active campaigns on
+                         ;; the same project (pre-registry supervisor behaviour).
+                         (and (nil? (:tamaki.loop/spec-id campaign))
+                              (= (:project options)
+                                 (:tamaki.loop/project campaign)))))]
       (append-loop-event! campaign :loop/completed
                           {:reason :superseded-by-supervisor}))
     (if canonical
       (do (print-edn canonical) 0)
-      (start-loop! {:options options}))))
+      (start-loop-with-options! options))))
+
+(defn ensure-all-loops!
+  "Discover enabled LoopSpecs and ensure one campaign per spec."
+  [{:keys [options]}]
+  (let [specs (->> (loop-registry/discover-specs
+                    {:skip-invalid? (boolean (:skip-invalid options))})
+                   (filter :loop/enabled)
+                   vec)
+        dry? (boolean (:dry-run options))]
+    (when (empty? specs)
+      (throw (ex-info "No enabled LoopSpecs discovered"
+                      {:dirs (mapv str (loop-registry/default-search-dirs))})))
+    (if dry?
+      (do (print-edn
+           (mapv (fn [spec]
+                   (loop-registry/summarize-spec
+                    spec
+                    (last (sort-by :tamaki.loop/updated-at
+                                   (filter #(and (= :active
+                                                    (:tamaki.loop/status %))
+                                                 (loop-registry/compatible-campaign?
+                                                  spec %))
+                                           (vals (campaigns)))))))
+                 specs))
+          0)
+      (let [results
+            (mapv
+             (fn [spec]
+               (let [out (java.io.StringWriter.)
+                     _ (binding [*out* out]
+                         (ensure-loop!
+                          {:positional []
+                           :options (loop-registry/ensure-options
+                                     spec
+                                     (select-keys options
+                                                  [:auto-approve
+                                                   :continuous
+                                                   :runners
+                                                   :interval-ms
+                                                   :max-failures
+                                                   :max-cycles
+                                                   :project
+                                                   :objective]))}))
+                     text (str out)]
+                 (try (edn/read-string text)
+                      (catch Exception _
+                        {:loop/id (:loop/id spec)
+                         :error "ensure produced non-edn output"
+                         :raw text}))))
+             specs)]
+        (print-edn results)
+        0))))
+
+(defn list-loops!
+  "List discovered LoopSpecs joined with any matching active campaign."
+  [{:keys [options]}]
+  (let [specs (loop-registry/discover-specs
+               {:skip-invalid? (boolean (:skip-invalid options))})
+        active (filter #(= :active (:tamaki.loop/status %))
+                       (vals (campaigns)))]
+    (print-edn
+     (mapv (fn [spec]
+             (let [match (last (sort-by :tamaki.loop/updated-at
+                                        (filter #(loop-registry/compatible-campaign?
+                                                  spec %)
+                                                active)))]
+               (loop-registry/summarize-spec spec match)))
+           specs))
+    0))
+
+(defn validate-loop-spec!
+  [{:keys [positional options]}]
+  (let [path (or (:spec options) (first positional))]
+    (when (str/blank? path)
+      (throw (ex-info "Usage: tamaki loop validate SPEC.edn" {})))
+    (print-edn (loop-registry/read-spec path))
+    0))
 
 (defn loop-status! [id]
   (if id
@@ -1459,12 +1585,16 @@
     (case action
       "start" (start-loop! parsed)
       "ensure" (ensure-loop! parsed)
+      "ensure-all" (ensure-all-loops! parsed)
+      "list" (list-loops! parsed)
+      "validate" (validate-loop-spec! parsed)
       "status" (loop-status! id)
       "stop-active" (stop-active-loops! parsed)
       "tick" (tick-loop! id)
       "run" (run-loop! id)
-      (throw (ex-info "Usage: tamaki loop start|ensure|status|stop-active|tick|run ..."
-                      {})))))
+      (throw (ex-info
+              "Usage: tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ..."
+              {})))))
 
 (defn dispatch
   [args]
