@@ -53,8 +53,16 @@
   description; and for communities where being counted is itself the hazard,
   record the form and do not seek rolls. A smaller honest iteration beats a
   larger one with a fabricated figure in it."
- :loop/project "."
- :loop/workspace-env "COM_JUNKAWASAKI_ROOT"
+ ;; A dedicated clean worktree of com-junkawasaki, created OUTSIDE the
+ ;; superproject per CLAUDE.md's parallel-agent rule. The superproject checkout
+ ;; itself can never be the loop project: it is permanently dirty with other
+ ;; sessions' WIP and actor worktrees, and every cycle would abort on the
+ ;; clean-tree precondition. Recreate with:
+ ;;   git worktree add --no-checkout -b tamaki/community-coverage \
+ ;;     ~/github/tamaki-workspaces/community-coverage origin/main
+ ;;   git sparse-checkout set --no-cone 90-docs manifest scripts .gitignore
+ ;;   mkdir node_modules && ln -s <superproject>/node_modules/datascript node_modules/
+ :loop/project "/Users/junkawasaki/github/tamaki-workspaces/community-coverage"
  :loop/continuous true
  :loop/interval-ms 1800000
  :loop/max-cycles 10
