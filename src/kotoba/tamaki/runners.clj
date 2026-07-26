@@ -35,10 +35,15 @@
                       {:runner id :available (mapv :id (profiles))}))))
 
 (defn selected [csv]
+  ;; Human-typed --runners values commonly include a space after the comma
+  ;; ("codex, claude") or a stray double comma; trim before filtering blanks
+  ;; so those still resolve instead of failing on a space-padded runner id.
   (mapv profile
         (if (str/blank? csv)
           (map :id (profiles))
-          (remove str/blank? (str/split csv #",")))))
+          (->> (str/split csv #",")
+               (map str/trim)
+               (remove str/blank?)))))
 
 (defn safe-profile [profile]
   (dissoc profile :env))
