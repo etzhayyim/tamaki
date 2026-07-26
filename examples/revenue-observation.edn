@@ -1,0 +1,23 @@
+{:period-days 7
+ :stocks {:traffic 0
+          :qualified-leads 0
+          :conversations 0
+          :proposals 0
+          :won-customers 0
+          :active-customers 0
+          :mrr-jpy 0
+          :cash-jpy 0}
+ :flows {:new-qualified-leads 0
+         :new-conversations 0
+         :new-proposals 0
+         :new-wins 0
+         :activations 0
+         :churned-customers 0
+         :delta-mrr-jpy 0
+         :churn-risk-mrr-jpy 0
+         :revenue-jpy 0
+         :experiments-shipped 0
+         :accepted-patches 0
+         :agent-cost-jpy 0
+         :operational-cost-jpy 0}
+ :rates {:confidence 0.0}}

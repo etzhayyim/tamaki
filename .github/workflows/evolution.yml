@@ -1,0 +1,35 @@
+name: evolution-candidate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  governed-evolution:
+    if: startsWith(github.head_ref, 'evolution/') || startsWith(github.head_ref, 'agent/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout local HIL dependency
+        uses: actions/checkout@v4
+        with:
+          repository: kotoba-lang/hil
+          path: hil
+      - name: Match the monorepo dependency layout
+        run: ln -s "$GITHUB_WORKSPACE/hil" ../hil
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: latest
+      - name: Verify Radicle-backed candidate mirror
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! printf '%s' "$PR_BODY" | grep -Eq 'Radicle-Issue: `?[0-9a-f]{40}`?'; then
+            echo "Evolution mirror PR must reference its full Radicle Issue ID." >&2
+            exit 1
+          fi
+      - name: Deterministic tests
+        run: clojure -M:test

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.kotoba.tamaki.supervisor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/ABSOLUTE/PATH/TO/tamaki/bin/tamaki-supervisor</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/ABSOLUTE/PATH/TO/tamaki</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TAMAKI_SUPERVISOR_RUNNERS</key>
+    <string>codex,claude,claude-zai,grok</string>
+    <key>TAMAKI_SUPERVISOR_INTERVAL_MS</key>
+    <string>900000</string>
+    <key>TAMAKI_SELF_EVOLUTION_MODE</key>
+    <string>radicle</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/ABSOLUTE/PATH/TO/tamaki/.tamaki/supervisor.log</string>
+  <key>StandardErrorPath</key>
+  <string>/ABSOLUTE/PATH/TO/tamaki/.tamaki/supervisor.log</string>
+</dict>
+</plist>
