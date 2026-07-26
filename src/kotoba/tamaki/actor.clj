@@ -180,7 +180,10 @@
 (defn replica-run
   [spec replica-index now-ms]
   (let [pool (runner-pool spec)
-        runner (nth pool (mod replica-index (count pool)))]
+        runner (nth pool (mod replica-index (count pool)))
+        capabilities (set (:actor/capabilities spec))
+        observe-only? (and (contains? capabilities :loop-evaluation)
+                           (not (contains? capabilities :implementation)))]
     (model/agent-run
      {:goal (str "Actor " (:actor/id spec) " replica " replica-index
                  ". Objective: " (:actor/objective spec)
@@ -190,7 +193,8 @@
       :mode :local
       :runner runner
       :model nil
-      :capabilities (set (:actor/capabilities spec))
+      :capabilities capabilities
+      :require-done-no-edit? observe-only?
       :parent (str "actor:" (:actor/id spec))
       :actor (:actor/id spec)
       :organism (:actor/organism spec)
