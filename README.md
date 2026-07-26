@@ -47,6 +47,37 @@ bin/tamaki doctor
 bin/tamaki contract
 ```
 
+## Concurrent runner pool
+
+Tamaki treats each subscription CLI/account as a distinct, durable worker.
+Built-ins are `codex`, `claude` (`claude -p`), and `claude-zai`. Register
+additional Claude accounts without putting credentials in the event log:
+
+```sh
+export TAMAKI_CLAUDE_ACCOUNTS='claude-work=$HOME/.claude-work,claude-lab=$HOME/.claude-lab'
+bin/tamaki runners
+
+bin/tamaki swarm "inspect and improve one bounded issue" \
+  --project "$PWD" \
+  --runners codex,claude,claude-zai,claude-work,claude-lab \
+  --execute
+```
+
+`swarm --execute` creates one detached git worktree per runner and starts all
+workers concurrently. The AgentRun stores only the runner ID and model; account
+configuration is resolved at execution time through `CLAUDE_CONFIG_DIR`.
+Worktrees are intentionally retained for review/integration.
+
+For a persistent pool, use `~/.config/tamaki/runners.edn` (or
+`TAMAKI_RUNNERS_FILE`):
+
+```clojure
+[{:id "claude-work" :model "claude:sonnet" :kind :claude-account
+  :env {"CLAUDE_CONFIG_DIR" "/PRIVATE/PATH/.claude-work"}}
+ {:id "claude-lab" :model "claude:opus" :kind :claude-account
+  :env {"CLAUDE_CONFIG_DIR" "/PRIVATE/PATH/.claude-lab"}}]
+```
+
 `submit` is safe by default: it only appends a queued run. Add `--execute` or
 invoke `run` separately to cross the execution boundary.
 
@@ -115,8 +146,15 @@ cycle bounded and independently auditable:
 bin/tamaki loop start \
   --project "$PWD" \
   --objective "raise maturity, coverage, reliability, and documentation" \
-  --model codex: \
+  --runner claude-work \
   --max-cycles 10 --max-failures 3 --interval-ms 60000
+
+# Resident supervisor: discovers work forever and rotates managed providers.
+bin/tamaki loop start \
+  --project "$PWD" \
+  --objective "discover and resolve the highest-leverage maturity issue" \
+  --runners codex,claude,claude-zai,grok \
+  --continuous --auto-approve --interval-ms 900000
 
 bin/tamaki loop tick <loop-id>   # exactly one resumable cycle
 bin/tamaki loop run <loop-id>    # continue until a bound is reached
@@ -130,6 +168,10 @@ the result. By default the campaign pauses at a reviewed patch. Add
 accepted, fast-forward-only integration. `--max-cycles`, `--max-failures`,
 and the durable event log are circuit breakers; restarting `loop run` resumes
 recorded state rather than resetting its memory.
+With `--continuous`, the cycle limit is disabled while the failure circuit
+breaker remains active. `--runners` rotates cycles deterministically through
+the named Tamaki profiles, so every provider receives the same durable
+run/lease/activity/usage and review lifecycle.
 
 Before execution, each cycle reads the open Radicle backlog, extracts
 `Blocked by: <issue-id>` and `Acceptance: <criterion>` metadata, rejects
@@ -140,6 +182,39 @@ and current WIP pressure. Selection inputs and ranking are durable
 review of the resulting patch; integration is attempted only after it passes
 the criteria without changing the tree. `:effect/measured` records the
 before/after operational signal so later cycles can respond to the feedback.
+
+## Revenue control plane
+
+Tamaki treats commercial outcomes as durable facts rather than agent prose.
+Private targets live in the gitignored `actors/revenue-targets.edn`; initialize
+it from the illustrative public template, then record a periodic observation
+from an approved analytics or accounting export:
+
+```sh
+cp examples/revenue-targets.example.edn actors/revenue-targets.edn
+cp examples/revenue-observation.edn /tmp/revenue-week.edn
+# Fill the stocks, period flows, costs, and confidence with observed values.
+bin/tamaki kpi observe --file /tmp/revenue-week.edn
+bin/tamaki kpi status
+```
+
+The control plane projects traffic, qualified leads, conversations, proposals,
+won and active customers, MRR, and cash as stocks. Lead creation, activation,
+wins, churn, experiments, accepted patches, model/agent cost, operating cost,
+and MRR change are period flows. Its North Star is:
+
+```text
+risk-adjusted incremental MRR
+= delta MRR * confidence
+ - churn-risk MRR - operational cost - agent cost
+```
+
+Target attainment produces a bounded `0..1` control score. Revenue gap,
+experiment cadence, churn, confidence, and cost become active-inference
+signals for Radicle Issue selection. Observed business pressure may increase
+actor capacity within its declared min/max bounds. Missing KPI data stays
+`:unobserved`: it creates prioritization pressure to instrument the system but
+does not by itself scale the actor pool.
 
 ## Dogfood
 
@@ -189,3 +264,57 @@ bb test
 clojure -M:test
 bin/tamaki doctor
 ```
+
+## Governed self-evolution
+
+Radicle is the source of truth for both normal delivery and changes to
+Tamaki's own future behaviour. GitHub is a subordinate mirror used for CI,
+visibility, and optional secondary review:
+
+```text
+Radicle Issue
+  -> isolated evolution/* worktree
+  -> implementation
+  -> deterministic tests + durable-event replay
+  -> Radicle Patch
+  -> independent Radicle review
+  -> optional draft GitHub mirror PR + CI
+  -> canary
+  -> fitness comparison
+  -> voice approval
+  -> Radicle canonical promotion or rejection
+```
+
+The canonical tree is never the mutation workspace. Start a candidate only
+from a clean canonical checkout:
+
+```sh
+bin/tamaki evolve propose 93971f39ceb295136d4769bd4ce3a7a94ddeb030 \
+  --project "$PWD" \
+  --objective "Implement explicit active inference and safe self-evolution"
+```
+
+After committing inside the returned worktree, advance the durable lifecycle:
+
+```sh
+bin/tamaki evolve transition CANDIDATE :implemented --commit SHA
+bin/tamaki evolve verify CANDIDATE -- clojure -M:test
+bin/tamaki evolve open-patch CANDIDATE --title "evolve: active inference"
+# Optional GitHub mirror:
+bin/tamaki evolve open-pr CANDIDATE --title "evolve: active inference"
+bin/tamaki evolve transition CANDIDATE :reviewed --review-accepted true
+bin/tamaki evolve canary CANDIDATE -- clojure -M:test
+bin/tamaki evolve transition CANDIDATE :awaiting-human \
+  --fitness-before '{:tests 68 :assertions 202 :failures 1}' \
+  --fitness-after '{:tests 75 :assertions 226 :failures 0}'
+bin/tamaki evolve promote CANDIDATE
+```
+
+Promotion fails closed unless the candidate has a Radicle Issue and Patch,
+green tests, independent review, historical replay, a green canary, improved
+fitness, and explicit voice approval. A GitHub PR is deliberately not a
+promotion requirement.
+
+The resident supervisor defaults to `TAMAKI_SELF_EVOLUTION_MODE=radicle`.
+Setting it to `github` is an explicit fallback that retires active Radicle
+campaigns; it is not the normal operating mode.
