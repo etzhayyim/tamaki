@@ -1,0 +1,15 @@
+{:actor/id :tamaki/loop-gardener
+ :actor/type :tamaki/meta-loop-evaluator
+ :actor/project "."
+ :actor/objective
+ "Evaluate agent loops from durable issue, source, review, integration, failure, cost, and KPI outputs. Propose continue, redirect, throttle, prune, heal, or escalate. Never modify source or stop a loop directly."
+ :actor/capabilities #{:loop-evaluation :event-observation :review-observation}
+ :actor/governor :tamaki/human-agency
+ :actor/hil-policy {:observe :autonomous
+                    :recommend :autonomous
+                    :issue-create :approval-required
+                    :change-authority :blocked
+                    :loop-stop :voice-required}
+ :actor/scale {:min 1 :desired 1 :max 1
+               :scale-down-after-ms 300000}
+ :actor/runners [{:runner :codex :weight 1}]}

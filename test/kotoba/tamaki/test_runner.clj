@@ -12,6 +12,7 @@
             [kotoba.tamaki.loop-registry-test]
             [kotoba.tamaki.lineage-test]
             [kotoba.tamaki.intelligence-test]
+            [kotoba.tamaki.kaizen-test]
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.runners-test]
             [kotoba.tamaki.result-test]
@@ -34,6 +35,7 @@
                                'kotoba.tamaki.loop-registry-test
                                'kotoba.tamaki.lineage-test
                                'kotoba.tamaki.intelligence-test
+                               'kotoba.tamaki.kaizen-test
                                'kotoba.tamaki.runners-test
                                'kotoba.tamaki.result-test
                                'kotoba.tamaki.store-test
