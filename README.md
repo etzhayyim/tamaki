@@ -151,7 +151,58 @@ store as the AgentRun. Successful integration marks the Radicle issue solved.
 ## Persistent growth loop
 
 An improvement campaign repeats the Radicle delivery cycle while keeping every
-cycle bounded and independently auditable:
+cycle bounded and independently auditable.
+
+### EDN LoopSpec registry (preferred)
+
+Loops are registered as EDN, not hardcoded in the supervisor or ad-hoc shell.
+Drop a file under `loops/` (or any directory on `TAMAKI_LOOPS_DIR` /
+`TAMAKI_LOOPS_PATH`, or `<cwd>/.tamaki/loops`, `~/.config/tamaki/loops`):
+
+```clojure
+;; loops/toshokan-maturity.edn
+{:loop/id :toshokan/maturity
+ :loop/enabled true
+ :loop/objective "さらに成熟度を向上: expand public-domain coverage..."
+ :loop/project "orgs/kotoba-lang/toshokan"
+ :loop/workspace-env "COM_JUNKAWASAKI_ROOT"  ; resolve project relative to this
+ :loop/continuous true
+ :loop/interval-ms 900000
+ :loop/max-failures 4
+ :loop/auto-approve true
+ :loop/runners ["codex" "claude" "claude-zai" "grok"]}
+```
+
+```sh
+# Discover registered loops and any matching active campaign
+bin/tamaki loop list
+
+# Validate / ensure / run from the EDN registration
+bin/tamaki loop validate loops/toshokan-maturity.edn
+bin/tamaki loop ensure --spec loops/toshokan-maturity.edn
+bin/tamaki loop ensure-all              # every enabled LoopSpec
+bin/tamaki loop ensure-all --dry-run    # plan only
+bin/tamaki loop tick <loop-id>
+bin/tamaki loop run <loop-id>
+bin/tamaki loop status
+```
+
+Shipped registrations:
+
+| File | Id | Role |
+|------|----|------|
+| `loops/revenue-growth.edn` | `:tamaki/revenue-growth` | default resident supervisor loop |
+| `loops/toshokan-maturity.edn` | `:toshokan/maturity` | 15m continuous toshokan maturity / coverage |
+
+`bin/tamaki-supervisor` loads `TAMAKI_LOOP_SPEC` (default
+`loops/revenue-growth.edn`) instead of baking the objective string into the
+shell script. It also ensures `TAMAKI_EXTRA_LOOP_SPEC` (default
+`loops/toshokan-maturity.edn`) so the maturity campaign is registered and
+visible to `loop list`. CLI flags and env vars remain overrides on top of the
+EDN base. Campaigns store `:tamaki.loop/spec-id` so objective prose can change
+without forking a second campaign.
+
+### Ad-hoc CLI (still supported)
 
 ```sh
 bin/tamaki loop start \

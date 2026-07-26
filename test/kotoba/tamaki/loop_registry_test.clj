@@ -20,7 +20,8 @@
                :loop/auto-approve true})
         spec (reg/read-spec path)]
     (is (= :demo/maturity (:loop/id spec)))
-    (is (= "/tmp/demo" (:loop/project spec)))
+    (is (= (.getCanonicalPath (io/file "/tmp/demo"))
+           (:loop/project spec)))
     (is (= ["codex" "claude"] (:loop/runners spec)))
     (is (true? (:loop/continuous spec)))
     (is (= 900000 (:loop/interval-ms spec)))

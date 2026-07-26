@@ -25,6 +25,16 @@
     (and (string? value) (not (str/blank? value))) (keyword value)
     :else (throw (ex-info "LoopSpec requires :loop/id" {:value value}))))
 
+(defn spec-id-str
+  "Stable string form for durable campaign matching. Namespaced keywords become
+  `ns/name` (no leading colon)."
+  [value]
+  (cond
+    (keyword? value) (subs (str value) 1)
+    (string? value) (let [s (str/trim value)]
+                      (if (str/starts-with? s ":") (subs s 1) s))
+    :else (str value)))
+
 (defn- normalize-runners
   "Accept either simple string/keyword ids or weighted {:runner :weight} maps
   (ActorSpec shape). Result is ordered vector of runner id strings."
@@ -226,7 +236,7 @@
                               (str g))
        :organism-parent (:loop/organism-parent spec)
        ;; Internal: durable match key so objective prose can evolve.
-       :spec-id (str (:loop/id spec))
+       :spec-id (spec-id-str (:loop/id spec))
        :spec-path (:loop/spec-path spec)}
       (into {} (remove (fn [[_ v]] (or (nil? v) (= "" v))) overrides))))))
 
@@ -235,11 +245,11 @@
   Prefer :tamaki.loop/spec-id when present; fall back to project+objective+
   runners+auto-approve (legacy ensure)."
   [spec campaign]
-  (let [spec-id (str (:loop/id spec))
+  (let [spec-id (spec-id-str (:loop/id spec))
         campaign-spec (:tamaki.loop/spec-id campaign)
         runners (:loop/runners spec)]
     (if (and campaign-spec (not (str/blank? (str campaign-spec))))
-      (and (= spec-id (str campaign-spec))
+      (and (= spec-id (spec-id-str campaign-spec))
            (= (:loop/project spec) (:tamaki.loop/project campaign)))
       (and (= (:loop/project spec) (:tamaki.loop/project campaign))
            (= (:loop/objective spec) (:tamaki.loop/objective campaign))

@@ -86,6 +86,33 @@
         (is (= 1 (count active)))
         (is (false? (:tamaki.loop/auto-approve (first active))))))))
 
+(deftest loop-ensure-from-edn-spec-is-idempotent
+  (let [root (temp-root)
+        spec-file (java.io.File/createTempFile "tamaki-loop-spec-" ".edn")]
+    (spit spec-file
+          (pr-str {:loop/id :toshokan/maturity
+                   :loop/objective "さらに成熟度を向上"
+                   :loop/project "/tmp/toshokan"
+                   :loop/runners ["codex" "claude"]
+                   :loop/continuous true
+                   :loop/interval-ms 900000
+                   :loop/auto-approve true
+                   :loop/max-failures 4}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 2000)]
+      (let [args ["loop" "ensure" "--spec" (.getPath spec-file)]
+            first-c (:value (call args))
+            second-c (:value (call args))
+            active (filter #(= :active (:tamaki.loop/status %))
+                           (vals (cli/campaigns)))]
+        (is (= (:tamaki.loop/id first-c) (:tamaki.loop/id second-c)))
+        (is (= "toshokan/maturity" (:tamaki.loop/spec-id first-c)))
+        (is (= 900000 (:tamaki.loop/interval-ms first-c)))
+        (is (true? (:tamaki.loop/continuous first-c)))
+        (is (true? (:tamaki.loop/auto-approve first-c)))
+        (is (= 1 (count active)))))))
+
 (deftest github-evolution-boundary-stops-only-matching-active-loops
   (let [root (temp-root)
         project-a "/tmp/project-a"

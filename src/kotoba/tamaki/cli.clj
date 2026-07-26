@@ -1080,7 +1080,8 @@
         compatible?
         (fn [campaign]
           (if-let [spec-id (:spec-id options)]
-            (and (= (str spec-id) (str (:tamaki.loop/spec-id campaign)))
+            (and (= (loop-registry/spec-id-str spec-id)
+                    (loop-registry/spec-id-str (:tamaki.loop/spec-id campaign)))
                  (= (:project options) (:tamaki.loop/project campaign)))
             (let [individual (:tamaki.loop/organism campaign)]
               (and (= (:project options) (:tamaki.loop/project campaign))
@@ -1102,8 +1103,9 @@
                        (if-let [spec-id (:spec-id options)]
                          ;; Registry-backed: only retire duplicate instances of
                          ;; this LoopSpec so other EDN loops stay active.
-                         (= (str spec-id)
-                            (str (:tamaki.loop/spec-id campaign)))
+                         (= (loop-registry/spec-id-str spec-id)
+                            (loop-registry/spec-id-str
+                             (:tamaki.loop/spec-id campaign)))
                          ;; Legacy CLI ensure: retire other active campaigns on
                          ;; the same project (pre-registry supervisor behaviour).
                          (and (nil? (:tamaki.loop/spec-id campaign))
@@ -1186,7 +1188,10 @@
 
 (defn validate-loop-spec!
   [{:keys [positional options]}]
-  (let [path (or (:spec options) (first positional))]
+  (let [path (or (:spec options)
+                 (first (filter #(and (string? %)
+                                      (str/ends-with? % ".edn"))
+                                positional)))]
     (when (str/blank? path)
       (throw (ex-info "Usage: tamaki loop validate SPEC.edn" {})))
     (print-edn (loop-registry/read-spec path))

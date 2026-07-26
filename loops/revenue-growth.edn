@@ -1,0 +1,19 @@
+;; Default resident supervisor loop (was env-hardcoded in bin/tamaki-supervisor).
+;; Prefer this EDN over TAMAKI_SUPERVISOR_OBJECTIVE when present.
+{:loop/id :tamaki/revenue-growth
+ :loop/enabled true
+ :loop/description
+ "Discover and resolve the highest-leverage issue that improves maturity,
+  coverage, reliability, documentation, or sustainable revenue on the Tamaki
+  checkout itself."
+ :loop/tags #{:tamaki :revenue :maturity :continuous :supervisor-default}
+ :loop/objective
+ "discover and resolve the highest-leverage issue that improves maturity, coverage, reliability, documentation, or sustainable revenue"
+ :loop/project "."
+ :loop/continuous true
+ :loop/interval-ms 900000
+ :loop/max-cycles 10
+ :loop/max-failures 4
+ :loop/auto-approve false
+ :loop/organism-name "Hikari"
+ :loop/runners ["codex" "claude" "claude-zai" "grok"]}
