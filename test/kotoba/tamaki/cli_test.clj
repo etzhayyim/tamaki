@@ -169,6 +169,21 @@
         (is (= "claude-zai:" (:tamaki.loop/model status)))
         (is (= [:loop/started] (event-kinds root)))))))
 
+(deftest persistent-loop-accepts-a-managed-provider-pool
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 5100)]
+      (let [{campaign :value}
+            (call ["loop" "start"
+                   "--project" "/repo"
+                   "--objective" "discover and resolve new issues"
+                   "--runners" "codex,claude,claude-zai,grok"
+                   "--continuous"])]
+        (is (:tamaki.loop/continuous campaign))
+        (is (= ["codex" "claude" "claude-zai" "grok"]
+               (:tamaki.loop/runners campaign)))))))
+
 (deftest patch-commit-is-resolved-from-run-receipt
   (let [root (temp-root)
         run {:agent.run/id "run-1" :agent.run/parent nil}]

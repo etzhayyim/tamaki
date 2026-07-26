@@ -11,9 +11,10 @@
    (str "loop-" now-ms "-" (subs (clojure.string/replace entropy #"-" "") 0 8))))
 
 (defn campaign
-  [{:keys [id objective project model runner max-cycles interval-ms max-failures
-           auto-approve]
-    :or {max-cycles 10 interval-ms 60000 max-failures 3 auto-approve false}}
+  [{:keys [id objective project model runner runners max-cycles interval-ms
+           max-failures auto-approve continuous]
+    :or {max-cycles 10 interval-ms 60000 max-failures 3 auto-approve false
+         continuous false}}
    now-ms]
   (when (clojure.string/blank? objective)
     (throw (ex-info "Loop requires a non-blank objective" {:field :objective})))
@@ -34,10 +35,14 @@
    :tamaki.loop/project project
    :tamaki.loop/model model
    :tamaki.loop/runner runner
+   :tamaki.loop/runners (vec (or (seq runners)
+                                 (when runner [runner])
+                                 []))
    :tamaki.loop/max-cycles max-cycles
    :tamaki.loop/interval-ms interval-ms
    :tamaki.loop/max-failures max-failures
    :tamaki.loop/auto-approve auto-approve
+   :tamaki.loop/continuous (boolean continuous)
    :tamaki.loop/status :active
    :tamaki.loop/cycles 0
    :tamaki.loop/failures 0
@@ -109,11 +114,20 @@
   (cond
     (nil? campaign) :unknown-loop
     (not= :active (:tamaki.loop/status campaign)) :not-active
-    (>= (:tamaki.loop/cycles campaign) (:tamaki.loop/max-cycles campaign))
+    (and (not (:tamaki.loop/continuous campaign))
+         (>= (:tamaki.loop/cycles campaign) (:tamaki.loop/max-cycles campaign)))
     :max-cycles
     (>= (:tamaki.loop/failures campaign) (:tamaki.loop/max-failures campaign))
     :max-failures
     :else nil))
+
+(defn runner-for-cycle
+  "Deterministically rotate a persistent campaign through its provider pool."
+  [campaign cycle]
+  (let [pool (:tamaki.loop/runners campaign)]
+    (or (when (seq pool)
+          (nth pool (mod (dec cycle) (count pool))))
+        (:tamaki.loop/runner campaign))))
 
 (defn cycle-goal [campaign cycle issue-id]
   (str "Autonomous improvement cycle " cycle " for Radicle issue " issue-id

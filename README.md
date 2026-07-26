@@ -149,6 +149,13 @@ bin/tamaki loop start \
   --runner claude-work \
   --max-cycles 10 --max-failures 3 --interval-ms 60000
 
+# Resident supervisor: discovers work forever and rotates managed providers.
+bin/tamaki loop start \
+  --project "$PWD" \
+  --objective "discover and resolve the highest-leverage maturity issue" \
+  --runners codex,claude,claude-zai,grok \
+  --continuous --auto-approve --interval-ms 900000
+
 bin/tamaki loop tick <loop-id>   # exactly one resumable cycle
 bin/tamaki loop run <loop-id>    # continue until a bound is reached
 bin/tamaki loop status <loop-id>
@@ -161,6 +168,10 @@ the result. By default the campaign pauses at a reviewed patch. Add
 accepted, fast-forward-only integration. `--max-cycles`, `--max-failures`,
 and the durable event log are circuit breakers; restarting `loop run` resumes
 recorded state rather than resetting its memory.
+With `--continuous`, the cycle limit is disabled while the failure circuit
+breaker remains active. `--runners` rotates cycles deterministically through
+the named Tamaki profiles, so every provider receives the same durable
+run/lease/activity/usage and review lifecycle.
 
 Before execution, each cycle reads the open Radicle backlog, extracts
 `Blocked by: <issue-id>` and `Acceptance: <criterion>` metadata, rejects

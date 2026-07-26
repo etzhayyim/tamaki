@@ -83,3 +83,16 @@
                                  :project "/repo"
                                  field value}
                                 1)))))
+
+(deftest continuous-campaign-rotates-providers-without-cycle-expiry
+  (let [campaign (loop/campaign
+                  {:objective "continuously improve"
+                   :project "/repo"
+                   :runners ["codex" "claude" "claude-zai" "grok"]
+                   :continuous true
+                   :max-cycles 1}
+                  1)]
+    (is (nil? (loop/stop-reason
+               (assoc campaign :tamaki.loop/cycles 1000))))
+    (is (= ["codex" "claude" "claude-zai" "grok" "codex"]
+           (mapv #(loop/runner-for-cycle campaign %) (range 1 6))))))

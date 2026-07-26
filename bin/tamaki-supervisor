@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tamaki_root="$(cd "$(dirname "$0")/.." && pwd)"
+project="${TAMAKI_SUPERVISOR_PROJECT:-$tamaki_root}"
+objective="${TAMAKI_SUPERVISOR_OBJECTIVE:-discover and resolve the highest-leverage issue that improves maturity, coverage, reliability, documentation, or sustainable revenue}"
+runners="${TAMAKI_SUPERVISOR_RUNNERS:-codex,claude,claude-zai,grok}"
+interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-900000}"
+max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-4}"
+
+cd "$tamaki_root"
+loop_id="$(
+  bin/tamaki loop start \
+    --project "$project" \
+    --objective "$objective" \
+    --runners "$runners" \
+    --continuous \
+    --auto-approve \
+    --interval-ms "$interval_ms" \
+    --max-failures "$max_failures" |
+  clojure -M -e '(println (:tamaki.loop/id (read)))'
+)"
+
+exec bin/tamaki loop run "$loop_id"

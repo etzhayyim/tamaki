@@ -54,7 +54,8 @@
       :else
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
-          (if (contains? #{"--execute" "--approve" "--auto-approve"} x)
+          (if (contains? #{"--execute" "--approve" "--auto-approve"
+                           "--continuous"} x)
             (recur (rest xs) positional
                    (assoc options (keyword (subs x 2)) true))
             (recur more positional
@@ -529,16 +530,22 @@
       0)))
 
 (defn start-loop! [{:keys [options]}]
-  (let [runner (when-let [id (:runner options)] (runners/profile id))
+  (let [profiles (cond
+                   (:runners options) (runners/selected (:runners options))
+                   (:runner options) [(runners/profile (:runner options))]
+                   :else [])
+        runner (first profiles)
         campaign (agent-loop/campaign
                   {:objective (:objective options)
                    :project (:project options)
                    :model (or (:model options) (:model runner))
                    :runner (:id runner)
+                   :runners (mapv :id profiles)
                    :max-cycles (parse-long-option options :max-cycles 10)
                    :interval-ms (parse-long-option options :interval-ms 60000)
                    :max-failures (parse-long-option options :max-failures 3)
-                   :auto-approve (boolean (:auto-approve options))}
+                   :auto-approve (boolean (:auto-approve options))
+                   :continuous (boolean (:continuous options))}
                   (now))]
     (append-loop-event! campaign :loop/started {:campaign campaign})
     (print-edn campaign)
@@ -635,8 +642,11 @@
       (throw (ex-info "Loop cannot tick" {:loop-id id :reason reason})))
     (let [cycle (inc (:tamaki.loop/cycles campaign))
           project (:tamaki.loop/project campaign)
+          runner-id (agent-loop/runner-for-cycle campaign cycle)
+          runner-profile (when runner-id (runners/profile runner-id))
           title (str "ASI cycle " cycle ": " (:tamaki.loop/objective campaign))]
-      (append-loop-event! campaign :loop/cycle-started {:loop/cycle cycle})
+      (append-loop-event! campaign :loop/cycle-started
+                          {:loop/cycle cycle :runner runner-id})
       (try
         (let [status (delivery/succeeded!
                       (delivery/execute! (delivery/git-status-command) project)
@@ -703,8 +713,9 @@
                                  (pr-str (get-in decision
                                                  [:issue :issue/blockers])))
                       :project project :mode :local
-                      :model (:tamaki.loop/model campaign)
-                      :runner (:tamaki.loop/runner campaign)
+                      :model (or (:model runner-profile)
+                                 (:tamaki.loop/model campaign))
+                      :runner runner-id
                       :capabilities #{:git :radicle}}
                      (now))]
             (store/append-event! (store/default-root)
