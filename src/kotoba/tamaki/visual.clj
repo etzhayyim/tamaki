@@ -72,13 +72,58 @@
                (re-matches #"observatory-\d+\.png" (.getName file)))
       (.delete file))))
 
+(def min-webkit-width
+  "Minimum pixel width for a WebKit live.png to be preferred over screen-capture.
+  Observed 767px snapshots omit Observatory provider usage cards; frames at
+  >=1100px keep them legible to Vision OCR."
+  1000)
+
+(def min-webkit-height
+  "Minimum pixel height for a WebKit live.png to be preferred over screen-capture."
+  700)
+
+(defn png-dimensions
+  "Read width/height from a PNG file's IHDR chunk without decoding pixels.
+  Returns {:width w :height h} or nil when the file is not a readable PNG."
+  [file]
+  (try
+    (with-open [in (java.io.DataInputStream.
+                    (java.io.BufferedInputStream. (io/input-stream file)))]
+      (let [sig (byte-array 8)]
+        (.readFully in sig)
+        (when (= (mapv #(bit-and % 0xff) sig)
+                 [0x89 0x50 0x4e 0x47 0x0d 0x0a 0x1a 0x0a])
+          (let [length (.readInt in)
+                ctype (byte-array 4)]
+            (.readFully in ctype)
+            (when (and (= length 13)
+                       (= (String. ctype java.nio.charset.StandardCharsets/US_ASCII)
+                          "IHDR"))
+              {:width (.readInt in)
+               :height (.readInt in)})))))
+    (catch Exception _ nil)))
+
+(defn usable-webkit-snapshot?
+  "True when a WebKit live.png is large enough that Observatory provider usage
+  cards remain OCR-legible. Undersized snapshots (observed around 767x548) omit
+  those cards and produce false :degraded visual health verdicts."
+  ([file]
+   (usable-webkit-snapshot? file min-webkit-width min-webkit-height))
+  ([file min-w min-h]
+   (boolean
+    (when-let [{:keys [width height]} (png-dimensions file)]
+      (and (pos? min-w) (pos? min-h)
+           (>= width min-w)
+           (>= height min-h))))))
+
 (defn capture! [state-root now-ms]
   (let [dir (io/file state-root "visual")
         _ (.mkdirs dir)
         live (io/file dir "live.png")
         image (io/file dir (str "observatory-" now-ms ".png"))]
     (if (and (.isFile live) (pos? (.length live))
-             (< (- now-ms (.lastModified live)) 30000))
+             (< (- now-ms (.lastModified live)) 30000)
+             (usable-webkit-snapshot? live))
       (do
         (io/copy live image)
         (prune! dir)
