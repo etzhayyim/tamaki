@@ -238,6 +238,9 @@
             (call ["loop" "start"
                    "--project" "/repo"
                    "--objective" "grow safely"
+                   "--organism-name" "Hikari"
+                   "--organism-generation" "3"
+                   "--organism-parent" "tamaki-meguru-2"
                    "--runner" "claude-zai"
                    "--max-cycles" "4"
                    "--max-failures" "2"])
@@ -248,6 +251,15 @@
         (is (= 2 (:tamaki.loop/max-failures status)))
         (is (= "claude-zai" (:tamaki.loop/runner status)))
         (is (= "claude-zai:" (:tamaki.loop/model status)))
+        (is (= "Hikari"
+               (get-in status [:tamaki.loop/organism
+                               :organism/given-name])))
+        (is (= 3
+               (get-in status [:tamaki.loop/organism
+                               :organism/generation])))
+        (is (= "tamaki-meguru-2"
+               (get-in status [:tamaki.loop/organism
+                               :organism/parent])))
         (is (= [:loop/started] (event-kinds root)))))))
 
 (deftest persistent-loop-accepts-a-managed-provider-pool

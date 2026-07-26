@@ -98,3 +98,17 @@
       (let [plan (actor/reconcile-plan scaled runs 400000)]
         (is (= 2 (count (:cancel plan))))
         (is (= 0 (:spawn plan)))))))
+
+(deftest reconcile-reaps-ghost-runs-and-restores-capacity
+  (let [one (assoc-in spec [:actor/scale] {:min 1 :desired 1 :max 2})
+        stale (assoc (actor/replica-run one 0 1000)
+                     :agent.run/status :running
+                     :agent.run/updated-at 1000
+                     :agent.run/budget {:deadline-ms 1000})
+        before-expiry (actor/reconcile-plan one [stale] 120000)
+        after-expiry (actor/reconcile-plan one [stale] 124000)]
+    (is (= [] (:reap before-expiry)))
+    (is (zero? (:spawn before-expiry)))
+    (is (= [(:agent.run/id stale)] (:reap after-expiry)))
+    (is (= 1 (:spawn after-expiry)))
+    (is (zero? (:running after-expiry)))))

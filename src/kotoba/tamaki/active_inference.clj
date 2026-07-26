@@ -1,6 +1,7 @@
 (ns kotoba.tamaki.active-inference
   "Deterministic active-inference state and expected-free-energy policy choice."
-  (:require [kotoba.tamaki.intelligence :as intelligence]))
+  (:require [kotoba.tamaki.intelligence :as intelligence]
+            [kotoba.tamaki.lineage :as lineage]))
 
 (def dimensions [:impact :urgency :confidence :risk :effort
                  :feedback-pressure :wip-pressure])
@@ -43,7 +44,7 @@
      (double (count dimensions))))
 
 (defn policy
-  [{:keys [id observations]} belief]
+  [{:keys [id observations wellbecoming requires-consent? consent?]} belief]
   (let [signals (merge intelligence/default-signals observations)
         pragmatic (clamp (intelligence/leverage-score
                           (intelligence/issue-node
@@ -52,14 +53,27 @@
                      (double (max 1 (count (:belief/uncertainty belief)))))
         risk (clamp (:risk signals))
         ambiguity (prediction-error belief signals)
-        expected-free-energy (- (+ (* 0.40 risk)
-                                   (* 0.25 ambiguity))
+        vitality (if wellbecoming
+                   (lineage/lineage-vitality wellbecoming)
+                   0.5)
+        consent-blocked? (and requires-consent? (not consent?))
+        agency-blocked? (and wellbecoming
+                             (< (lineage/clamp (:human-agency wellbecoming)) 0.5))
+        expected-free-energy (+ (if (or consent-blocked? agency-blocked?)
+                                  1000000.0 0.0)
+                                (- (+ (* 0.40 risk)
+                                      (* 0.25 ambiguity))
                                 (+ (* 0.25 pragmatic)
-                                   (* 0.10 epistemic)))]
+                                   (* 0.10 epistemic)
+                                   (* 0.15 vitality))))]
     {:policy/id id
      :policy/pragmatic-value pragmatic
      :policy/epistemic-value epistemic
      :policy/risk risk
+     :policy/lineage-vitality vitality
+     :policy/gate (cond consent-blocked? :approval-required
+                        agency-blocked? :repair-relationship
+                        :else :allowed)
      :policy/ambiguity ambiguity
      :policy/expected-free-energy expected-free-energy}))
 

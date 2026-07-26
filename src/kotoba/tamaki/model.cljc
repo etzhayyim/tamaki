@@ -29,7 +29,7 @@
 
 (defn agent-run
   [{:keys [id goal project source-project repo pin mode node model runner
-           capabilities budget parent actor replica]
+           capabilities budget parent actor replica organism]
     :or {mode :local node :auto capabilities #{} budget {}}}
    now-ms]
   (when (str/blank? goal)
@@ -54,6 +54,7 @@
                             budget)
    :agent.run/parent parent
    :agent.run/actor actor
+   :agent.run/organism organism
    :agent.run/replica replica
    :agent.run/status :queued
    :agent.run/created-at now-ms

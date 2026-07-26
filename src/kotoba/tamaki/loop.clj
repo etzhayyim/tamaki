@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.loop
-  "Pure campaign state for bounded, durable self-improvement cycles.")
+  "Pure campaign state for bounded, durable self-improvement cycles."
+  (:require [kotoba.tamaki.lineage :as lineage]))
 
 (def terminal-cycle-kinds
   #{:loop/cycle-integrated :loop/cycle-reviewed
@@ -12,7 +13,7 @@
 
 (defn campaign
   [{:keys [id objective project model runner runners max-cycles interval-ms
-           max-failures auto-approve continuous]
+           max-failures auto-approve continuous organism]
     :or {max-cycles 10 interval-ms 60000 max-failures 3 auto-approve false
          continuous false}}
    now-ms]
@@ -43,6 +44,9 @@
    :tamaki.loop/max-failures max-failures
    :tamaki.loop/auto-approve auto-approve
    :tamaki.loop/continuous (boolean continuous)
+   :tamaki.loop/organism organism
+   :tamaki.loop/expires-at (or (:organism/expires-at organism)
+                               (+ now-ms lineage/default-lifetime-ms))
    :tamaki.loop/status :active
    :tamaki.loop/cycles 0
    :tamaki.loop/failures 0
@@ -112,16 +116,21 @@
          result)))
    {} events))
 
-(defn stop-reason [campaign]
-  (cond
-    (nil? campaign) :unknown-loop
-    (not= :active (:tamaki.loop/status campaign)) :not-active
-    (and (not (:tamaki.loop/continuous campaign))
-         (>= (:tamaki.loop/cycles campaign) (:tamaki.loop/max-cycles campaign)))
-    :max-cycles
-    (>= (:tamaki.loop/failures campaign) (:tamaki.loop/max-failures campaign))
-    :max-failures
-    :else nil))
+(defn stop-reason
+  ([campaign] (stop-reason campaign nil))
+  ([campaign now-ms]
+   (cond
+     (nil? campaign) :unknown-loop
+     (not= :active (:tamaki.loop/status campaign)) :not-active
+     (and now-ms (:tamaki.loop/expires-at campaign)
+          (>= now-ms (:tamaki.loop/expires-at campaign)))
+     :organism-lease-expired
+     (and (not (:tamaki.loop/continuous campaign))
+          (>= (:tamaki.loop/cycles campaign) (:tamaki.loop/max-cycles campaign)))
+     :max-cycles
+     (>= (:tamaki.loop/failures campaign) (:tamaki.loop/max-failures campaign))
+     :max-failures
+     :else nil)))
 
 (defn runner-for-cycle
   "Deterministically rotate a persistent campaign through its provider pool."
@@ -136,5 +145,9 @@
        ". Objective: " (:tamaki.loop/objective campaign) "\n"
        "Inspect the repository, select one small high-value improvement, implement it, "
        "add or improve deterministic tests, and run all documented test suites. "
+       "Preserve human agency, relational trust, inheritable learning, future "
+       "optionality, and succession integrity. Pause for consent when values "
+       "conflict or an action is irreversible. "
        "Keep the change reviewable and do not modify secrets, generated files, "
-       "external services, or unrelated repositories."))
+       "external services, or unrelated repositories. Never acquire resources, "
+       "extend the organism lease, or create a successor without explicit approval."))

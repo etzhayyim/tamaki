@@ -10,6 +10,7 @@
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
+            [kotoba.tamaki.lineage :as lineage]
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
@@ -52,6 +53,7 @@
        "  tamaki contract\n\n"
        "Options:\n"
        "  --repo OWNER/REPO --pin SHA --node NAME|auto --model MODEL --runner ID\n"
+       "  --organism-name NAME [--organism-generation N --organism-parent ID]\n"
        "  --requires git,nbb,clojure --parent RUN-ID --execute\n"))
 
 (defn parse-args
@@ -157,6 +159,14 @@
         existing-count (count (actor/actor-runs spec
                                                 (remove nil? (vals (runs)))))
         actor-token (str/replace (str (:actor/id spec)) #"[^A-Za-z0-9]+" "-")]
+    (doseq [run-id (:reap before)
+            :let [run (run-by-id run-id)
+                  status (:agent.run/status run)
+                  kind (if (contains? #{:queued :held} status)
+                         :run/cancelled :run/failed)]]
+      (emit! run kind {:actor/id (:actor/id spec)
+                       :actor/reason :lease-expired
+                       :agent.run/previous-status status}))
     (doseq [run-id (:cancel before)
             :let [run (run-by-id run-id)]]
       (emit! run :run/cancelled {:actor/id (:actor/id spec)
@@ -630,24 +640,41 @@
                           {"KC_LOOP_ID" (:agent.run/id run)
                            "KC_SESSION" (:agent.run/id run)
                            "KC_WORKER_ID" (:agent.run/worker leased)
+                           "KC_RUN_TIMEOUT_MS"
+                           (str (get-in run [:agent.run/budget :deadline-ms]
+                                        1200000))
+                           "KC_SUBSCRIPTION_TIMEOUT_MS"
+                           (str (min 900000
+                                     (get-in run
+                                             [:agent.run/budget :deadline-ms]
+                                             1200000)))
+                           "KC_PROCESS_TIMEOUT_MS"
+                           (str (get-in run
+                                        [:agent.run/budget :test-timeout-ms]
+                                        180000))
                            "KC_REQUIRE_DONE_NO_EDIT" "1"}
                           (:env runner))
                          adapters/*activity-fn*
                          (fn [line]
-                           (let [[kind detail]
+                           (let [[kind detail stream]
                                  (cond
                                    (str/includes? line "[model:start]")
-                                   [:model/token-processing :started]
+                                   [:model/token-processing :started :model]
                                    (str/includes? line "[model:end]")
-                                   [:model/token-processing :completed]
+                                   [:model/token-processing :completed :model]
                                    (str/includes? line "[tool:start]")
-                                   [:tool/started :running]
+                                   [:tool/started :running :tool]
                                    (str/includes? line "[tool:end]")
-                                   [:tool/completed :completed]
-                                   :else [:agent/output :streaming])]
+                                   [:tool/completed :completed :tool]
+                                   :else [:agent/output :streaming :output])]
                              (emit! leased :agent/activity
                                     (cond-> {:activity/kind kind
                                              :activity/state detail
+                                             :activity/agent
+                                             (:agent.run/id leased)
+                                             :activity/worker
+                                             (:agent.run/worker leased)
+                                             :activity/stream stream
                                              :activity/text
                                              (subs line 0 (min 500 (count line)))}
                                       (str/includes? line "[model:usage]")
@@ -972,7 +999,15 @@
       0)))
 
 (defn start-loop! [{:keys [options]}]
-  (let [profiles (cond
+  (let [created-at (now)
+        individual
+        (when-let [given-name (:organism-name options)]
+          (lineage/organism
+           {:given-name given-name
+            :generation (parse-long-option options :organism-generation 1)
+            :parent (:organism-parent options)}
+           created-at))
+        profiles (cond
                    (:runners options) (runners/selected (:runners options))
                    (:runner options) [(runners/profile (:runner options))]
                    :else [])
@@ -987,8 +1022,9 @@
                    :interval-ms (parse-long-option options :interval-ms 60000)
                    :max-failures (parse-long-option options :max-failures 3)
                    :auto-approve (boolean (:auto-approve options))
-                   :continuous (boolean (:continuous options))}
-                  (now))]
+                   :continuous (boolean (:continuous options))
+                   :organism individual}
+                  created-at)]
     (append-loop-event! campaign :loop/started {:campaign campaign})
     (print-edn campaign)
     0))
@@ -1079,8 +1115,12 @@
                   {:goal (str "Independently review Radicle patch " patch-id
                               " at Git commit " commit-id
                               ". Verify every acceptance criterion and run the "
-                              "documented tests. Inspect `git show " commit-id
-                              "`; the patch id is not a Git object. Do not edit "
+                              "documented tests. Inspect the commit with the "
+                              "dedicated git diff/status tools or allowlisted "
+                              "`git show --format=raw --no-patch " commit-id
+                              "` and `git show --stat " commit-id
+                              "`. Do not use git log or git branch; the patch "
+                              "id is not a Git object. Do not edit "
                               "tracked files, commit, deliver, or integrate.\n"
                               "Criteria:\n- " (str/join "\n- " criteria))
                    :project (:agent.run/project worker)
@@ -1130,7 +1170,7 @@
 (defn tick-loop! [id]
   (let [campaign (or (campaign-by-id id)
                      (throw (ex-info "Unknown loop" {:loop-id id})))
-        reason (agent-loop/stop-reason campaign)]
+        reason (agent-loop/stop-reason campaign (now))]
     (when reason
       (throw (ex-info "Loop cannot tick" {:loop-id id :reason reason})))
     (let [cycle (inc (:tamaki.loop/cycles campaign))
@@ -1389,7 +1429,7 @@
   (loop []
     (let [campaign (or (campaign-by-id id)
                        (throw (ex-info "Unknown loop" {:loop-id id})))
-          reason (agent-loop/stop-reason campaign)]
+          reason (agent-loop/stop-reason campaign (now))]
       (if reason
         (do
           (when (= :active (:tamaki.loop/status campaign))
@@ -1403,7 +1443,7 @@
               (binding [*out* *err*]
                 (println "tamaki loop cycle failed:" (.getMessage e)))))
           (let [next-campaign (campaign-by-id id)]
-            (when-not (agent-loop/stop-reason next-campaign)
+            (when-not (agent-loop/stop-reason next-campaign (now))
               (Thread/sleep (:tamaki.loop/interval-ms next-campaign))))
           (recur))))))
 

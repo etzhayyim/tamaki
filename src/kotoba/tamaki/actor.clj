@@ -7,6 +7,7 @@
 
 (def active-statuses #{:queued :leased :running :checkpointed :held})
 (def hil-decisions #{:autonomous :voice-required :approval-required :blocked})
+(def default-lease-grace-ms 120000)
 
 (defn actor-id [value]
   (cond
@@ -89,6 +90,23 @@
       (+ (max 1 (long (Math/ceil
                        (* 2.0 (double (or control-pressure 0.0))))))))))
 
+(defn stale-run?
+  "An active durable state without a heartbeat past its execution deadline is
+  a ghost. Activity currently does not fold into AgentRun state, so the run
+  deadline plus a bounded grace period is the conservative lease."
+  [run now-ms]
+  (when (and now-ms (contains? active-statuses (:agent.run/status run)))
+    (let [updated (or (:agent.run/updated-at run)
+                      (:agent.run/created-at run) 0)
+          deadline (or (get-in run [:agent.run/budget :deadline-ms]) 1200000)]
+      (>= (- now-ms updated) (+ deadline default-lease-grace-ms)))))
+
+(defn- live-active-runs [spec runs now-ms]
+  (->> (actor-runs spec runs)
+       (filter #(contains? active-statuses (:agent.run/status %)))
+       (remove #(stale-run? % now-ms))
+       vec))
+
 (defn effective-desired
   "Baseline :desired raised by live scale-up pressure, clamped to [min, max].
 
@@ -97,16 +115,16 @@
     When queued or held replicas cross a threshold, raise capacity so HIL-held
     workers do not stall the whole actor and backlog does not sit forever.
   - :scale-down-after-ms (honoured by reconcile-plan cancel selection)"
-  [spec runs]
-  (let [spec (validate-spec spec)
-        scale (:actor/scale spec)
-        {:keys [min desired] max-capacity :max} scale
-        active (->> (actor-runs spec runs)
-                    (filterv #(contains? active-statuses (:agent.run/status %))))
-        raised (+ desired
-                  (scale-up-extra scale active
-                                  (:actor/control-pressure spec)))]
-    (-> raised (clojure.core/min max-capacity) (clojure.core/max min))))
+  ([spec runs] (effective-desired spec runs nil))
+  ([spec runs now-ms]
+   (let [spec (validate-spec spec)
+         scale (:actor/scale spec)
+         {:keys [min desired] max-capacity :max} scale
+         active (live-active-runs spec runs now-ms)
+         raised (+ desired
+                   (scale-up-extra scale active
+                                   (:actor/control-pressure spec)))]
+     (-> raised (clojure.core/min max-capacity) (clojure.core/max min)))))
 
 (defn- cancel-candidates
   [active now-ms scale-down-after-ms]
@@ -132,8 +150,9 @@
    (let [spec (validate-spec spec)
          scale (:actor/scale spec)
          all (actor-runs spec runs)
-         active (filterv #(contains? active-statuses (:agent.run/status %)) all)
-         desired (effective-desired spec runs)
+         stale (filterv #(stale-run? % now-ms) all)
+         active (live-active-runs spec runs now-ms)
+         desired (effective-desired spec runs now-ms)
          delta (- desired (count active))
          cancellable (cancel-candidates active now-ms
                                         (:scale-down-after-ms scale))]
@@ -144,6 +163,7 @@
       :queued (count (filter #(= :queued (:agent.run/status %)) active))
       :blocked (count (filter #(= :held (:agent.run/status %)) active))
       :spawn (max 0 delta)
+      :reap (mapv :agent.run/id stale)
       :cancel (if (neg? delta)
                 (mapv :agent.run/id (take (- delta) cancellable))
                 [])
@@ -165,5 +185,6 @@
       :capabilities (set (:actor/capabilities spec))
       :parent (str "actor:" (:actor/id spec))
       :actor (:actor/id spec)
+      :organism (:actor/organism spec)
       :replica replica-index}
      now-ms)))

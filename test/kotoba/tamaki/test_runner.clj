@@ -8,6 +8,7 @@
             [kotoba.tamaki.delivery-test]
             [kotoba.tamaki.evolution-test]
             [kotoba.tamaki.loop-test]
+            [kotoba.tamaki.lineage-test]
             [kotoba.tamaki.intelligence-test]
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.runners-test]
@@ -26,6 +27,7 @@
                                'kotoba.tamaki.delivery-test
                                'kotoba.tamaki.evolution-test
                                'kotoba.tamaki.loop-test
+                               'kotoba.tamaki.lineage-test
                                'kotoba.tamaki.intelligence-test
                                'kotoba.tamaki.runners-test
                                'kotoba.tamaki.store-test

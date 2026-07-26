@@ -4,6 +4,17 @@
 not reimplement the existing runtimes; it gives them one `AgentRun` identity,
 append-only event history, state machine, and operator surface.
 
+Tamaki models the complete system as an artificial organism. In this model an
+Actor is a durable role with an objective and policy, an AgentRun is one
+bounded execution created to perform that role, and `codex`, `claude`, or
+`grok` are replaceable runner profiles rather than Actor names. See
+[Artificial organism model](docs/artificial-organism.md) and
+[ADR-0001](docs/adr/0001-artificial-organism-agent-actor-runner-model.md).
+Each Tamaki individual has a maximum 30-day external lease. Its continuity is
+the governed transmission of genome, epigenome, and consent-scoped memes to a
+human-approved successor—not indefinite process survival. See
+[ADR-0002](docs/adr/0002-finite-relational-lineage-and-wellbecoming.md).
+
 ```text
 manimani / itonami
         │ submit AgentRun
@@ -153,6 +164,7 @@ bin/tamaki loop start \
 bin/tamaki loop start \
   --project "$PWD" \
   --objective "discover and resolve the highest-leverage maturity issue" \
+  --organism-name Hikari \
   --runners codex,claude,claude-zai,grok \
   --continuous --auto-approve --interval-ms 900000
 
@@ -172,6 +184,12 @@ With `--continuous`, the cycle limit is disabled while the failure circuit
 breaker remains active. `--runners` rotates cycles deterministically through
 the named Tamaki profiles, so every provider receives the same durable
 run/lease/activity/usage and review lifecycle.
+
+`--organism-name` records a named finite individual such as `Tamaki Hikari`.
+Its loop lease expires after at most 30 days even with `--continuous`.
+`--organism-generation` and `--organism-parent` record lineage. Supplying these
+options creates identity metadata only; it does not bypass the separately
+reviewed, human-approved succession protocol.
 
 Before execution, each cycle reads the open Radicle backlog, extracts
 `Blocked by: <issue-id>` and `Acceptance: <criterion>` metadata, rejects
