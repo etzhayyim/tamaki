@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tamaki_root="$(cd "$(dirname "$0")/.." && pwd)"
+interval_seconds="${TAMAKI_DOMAIN_INTERVAL_SECONDS:-300}"
+control_root="${TAMAKI_CONTROL_ROOT:-$tamaki_root/.tamaki/control}"
+actor_dir="${TAMAKI_ACTOR_SPEC_DIR:-$control_root/actors}"
+concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-3}"
+cd "$tamaki_root"
+
+if [[ ! -d "$actor_dir" ]]; then
+  echo "Tamaki control actor directory not found: $actor_dir" >&2
+  echo "Set TAMAKI_CONTROL_ROOT or TAMAKI_ACTOR_SPEC_DIR." >&2
+  exit 2
+fi
+if ! [[ "$concurrency" =~ ^[1-9][0-9]*$ ]]; then
+  echo "TAMAKI_DOMAIN_CONCURRENCY must be a positive integer" >&2
+  exit 2
+fi
+
+index=0
+while true; do
+  specs=("$actor_dir"/*.edn)
+  if [[ ! -f "${specs[0]}" ]]; then
+    echo "No ActorSpecs found in $actor_dir" >&2
+    exit 2
+  fi
+  pids=()
+  count="${#specs[@]}"
+  batch="$concurrency"
+  (( batch > count )) && batch="$count"
+  for ((offset=0; offset<batch; offset++)); do
+    spec="${specs[$(((index + offset) % count))]}"
+    bin/tamaki actor reconcile "$spec" --execute &
+    pids+=("$!")
+  done
+  for pid in "${pids[@]}"; do
+    wait "$pid" || true
+  done
+  index=$(((index + batch) % count))
+  sleep "$interval_seconds"
+done

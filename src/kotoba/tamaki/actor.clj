@@ -3,7 +3,8 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [kotoba.tamaki.model :as model]))
+            [kotoba.tamaki.model :as model]
+            [kotoba.tamaki.visibility :as visibility]))
 
 (def active-statuses #{:queued :leased :running :checkpointed :held})
 (def hil-decisions #{:autonomous :voice-required :approval-required :blocked})
@@ -42,7 +43,8 @@
       (when-not (contains? hil-decisions decision)
         (throw (ex-info "Unknown ActorSpec HIL policy"
                         {:actor/id id :gate gate :decision decision}))))
-    (assoc spec :actor/id id :actor/scale scale :actor/runners runners)))
+    (visibility/validate-actor
+     (assoc spec :actor/id id :actor/scale scale :actor/runners runners))))
 
 (defn read-spec [path]
   (let [file (io/file path)]
@@ -187,6 +189,11 @@
     (model/agent-run
      {:goal (str "Actor " (:actor/id spec) " replica " replica-index
                  ". Objective: " (:actor/objective spec)
+                 "\nRepository visibility: "
+                 (name (or (:actor/repository-visibility spec) :unspecified))
+                 ". Issue and delivery authority: "
+                 (name (or (:actor/issue-authority spec) :unspecified))
+                 ". Never publish through a different authority."
                  "\nProcess the highest-leverage unblocked work item within "
                  "the declared capabilities and governor policy.")
       :project (:actor/project spec)

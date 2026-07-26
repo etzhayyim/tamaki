@@ -128,6 +128,28 @@
        :image/width (Long/parseLong width)
        :image/height (Long/parseLong height)})))
 
+(defn- usage-stat-count
+  "Count inbound usage counters typical of provider usage cards ('in 12345')."
+  [text]
+  (count (re-seq #"\bin\s+\d{2,}" text)))
+
+(defn provider-usage-cards-visible?
+  "True when OCR evidence shows the Observatory provider usage cards.
+
+  Prefer exact labels (codex + claude + grok). When Vision misreads a short
+  colored label — observed on purple 'grok' cards as 'CrOR' — accept a
+  structural fallback: several inbound usage-stat blocks plus at least two of
+  the named providers. Live-activity chatter alone is not enough because it
+  rarely emits the 'in <digits>' card pattern."
+  [text]
+  (let [has-codex (str/includes? text "codex")
+        has-claude (str/includes? text "claude")
+        has-grok (str/includes? text "grok")
+        named (count (filter identity [has-codex has-claude has-grok]))
+        stats (usage-stat-count text)]
+    (or (and has-codex has-claude has-grok)
+        (and (>= stats 3) (>= named 2)))))
+
 (defn evaluate-observatory
   "Pure decision logic for Observatory visual health: given CoreGraphics canvas
   metrics and lower-cased OCR text, return the verdict map (:visual/status,
@@ -142,8 +164,7 @@
                    (conj "3D canvas region appears blank or lacks grid contrast")
                    (not (str/includes? text "tamaki observatory"))
                    (conj "Observatory title was not recognized")
-                   (not-every? #(str/includes? text %)
-                               ["codex" "claude" "grok"])
+                   (not (provider-usage-cards-visible? text))
                    (conj "One or more provider usage cards are not visible")
                    (not (str/includes? text "activity"))
                    (conj "Live activity panel was not recognized"))

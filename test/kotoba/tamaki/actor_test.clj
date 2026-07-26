@@ -24,6 +24,17 @@
                  (actor/validate-spec
                   (assoc-in spec [:actor/hil-policy :integrate] :silent))))))
 
+(deftest replica-prompt-binds-repository-authority
+  (let [private-spec (assoc spec
+                            :actor/organism :private-example
+                            :actor/repository-visibility :private
+                            :actor/issue-authority :github-private)
+        run (actor/replica-run private-spec 0 1)]
+    (is (re-find #"Repository visibility: private"
+                 (:agent.run/goal run)))
+    (is (re-find #"Issue and delivery authority: github-private"
+                 (:agent.run/goal run)))))
+
 (deftest relative-actor-project-is-canonicalized-at-the-file-boundary
   (let [file (java.io.File/createTempFile "tamaki-actor-" ".edn")]
     (spit file (pr-str (assoc spec :actor/project ".")))

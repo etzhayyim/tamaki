@@ -312,7 +312,7 @@ For one shared run tree across the Mac fleet:
 
 ```sh
 export TAMAKI_STORE=kotobase
-export KOTOBA_URL=https://kotobase.net
+export KOTOBA_URL=https://graph.example.test
 export KOTOBA_GRAPH=<shared-graph-cid>
 export KOTOBA_TOKEN=<scoped-bearer-token>
 

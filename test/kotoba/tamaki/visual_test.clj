@@ -62,6 +62,32 @@
     (is (= ["One or more provider usage cards are not visible"]
            (:visual/findings result)))))
 
+(deftest provider-usage-cards-visible-accepts-exact-labels
+  (is (true? (visual/provider-usage-cards-visible?
+              "tamaki observatory codex claude grok activity")))
+  (is (false? (visual/provider-usage-cards-visible?
+               "tamaki observatory codex claude activity"))))
+
+(deftest provider-usage-cards-visible-tolerates-ocr-misread-of-grok
+  ;; Observed Vision OCR of a healthy Observatory frame: purple 'grok' card
+  ;; rendered as 'CrOR' while all four usage-stat blocks remained intact.
+  (let [ocr (str "tamaki observatory "
+                 "codex in 11427642 out 103128 "
+                 "in 612 out 456879 "
+                 "claude-zai in 4367435 out 286134 "
+                 "cror in 320678 out 55493 "
+                 "live activity")]
+    (is (true? (visual/provider-usage-cards-visible? ocr)))
+    (is (= :healthy
+           (:visual/status
+            (visual/evaluate-observatory {:canvas/stddev 12.0} ocr))))))
+
+(deftest provider-usage-cards-visible-rejects-live-activity-only
+  ;; Named providers can appear in the live activity stream without any
+  ;; usage cards being on screen; stats must still back the fallback path.
+  (is (false? (visual/provider-usage-cards-visible?
+               "tamaki observatory codex claude activity token-processing"))))
+
 (deftest evaluate-observatory-flags-missing-activity-panel
   (let [metrics {:canvas/stddev 12.0}
         text "tamaki observatory codex claude grok"
