@@ -83,8 +83,13 @@ trap cleanup EXIT INT TERM
         actor_specs+=("$discovered_spec")
       done
     fi
+    actor_reconcile_pids=()
     for current_actor_spec in "${actor_specs[@]}"; do
-      bin/tamaki actor reconcile "$current_actor_spec" --execute || true
+      bin/tamaki actor reconcile "$current_actor_spec" --execute &
+      actor_reconcile_pids+=("$!")
+    done
+    for reconcile_pid in "${actor_reconcile_pids[@]}"; do
+      wait "$reconcile_pid" || true
     done
     sleep "$actor_interval_seconds"
   done
