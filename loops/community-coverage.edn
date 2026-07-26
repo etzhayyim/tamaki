@@ -1,0 +1,64 @@
+;; Continuous coverage loop for the worldwide community corpus held in the
+;; com-junkawasaki superproject (90-docs/community-coverage/, ADR-2607257200).
+;;
+;; Register/ensure with:
+;;   COM_JUNKAWASAKI_ROOT=/Users/junkawasaki/github/com-junkawasaki \
+;;     bin/tamaki loop ensure --spec loops/community-coverage.edn
+;;   COM_JUNKAWASAKI_ROOT=... bin/tamaki loop list
+;;   COM_JUNKAWASAKI_ROOT=... bin/tamaki loop tick --max 1
+;;
+;; The per-iteration protocol is NOT in this file. It is versioned with the
+;; corpus at 90-docs/community-coverage/iteration-runbook.edn, so the runbook
+;; and the data it governs move together. This spec only points at it.
+{:loop/id :community-coverage/worldwide
+ :loop/enabled true
+ :loop/description
+ "Raise coverage of worldwide communities — local, sport, fraternal, union,
+  international, traditional, net-native — explicitly including organizations
+  that are probably not legally registered. One iteration adds 4-6 forms,
+  pins at least one to a real source when the web is reachable, and updates
+  ADR-2607257200's current-state block."
+ :loop/tags #{:community-coverage :corpus :coverage :unregistered :continuous}
+ :loop/objective
+ "READ 90-docs/community-coverage/iteration-runbook.edn FIRST and follow it
+  exactly; it is the authoritative protocol and it overrides any generic
+  improve-the-repo instinct. This corpus is documentation, not code: do not add
+  tests, do not refactor, do not touch manifest/west.yml (a correct iteration
+  leaves it with a zero diff).
+
+  One iteration: (1) run the coverage reporter (default, regions, unpinned,
+  integrity) and read the numbers; (2) pick a gap, preferring the regions the
+  reporter shows as thinnest, and grep the existing files to confirm the form
+  is not already recorded — duplicate :org/id has happened; (3) write ONE new
+  90-docs/community-coverage/community-orgs-<theme>-<n>.edn with 4-6 entities
+  in the exact attribute shape of the existing files; (4) pin at least one
+  entity to a real, dated, attributable source via web search, and if the web
+  is unreachable in this environment, ship the entities unpinned as
+  llm-recall-unverified rather than inventing a citation; (5) rewrite the
+  current-state block of 90-docs/adr/2607257200-worldwide-community-coverage-corpus.edn
+  in place with the measured numbers, adding a numbered finding only when
+  something structurally new was actually observed; (6) verify — the integrity
+  check must print 'clean' and manifest/edn-query.cljs count must still parse —
+  before committing; (7) commit in a worktree outside the superproject, push
+  the branch in its own command, and merge server-side with gh api merges. No
+  rebase, no force-push.
+
+  Invariants that matter more than throughput: never present a recalled number
+  as a measurement; every entity states :org/member-count-basis including why
+  it cannot be counted; reach, registrations, wallet addresses and cumulative
+  memberships never go in :org/member-count but in :org/proxy-metric with their
+  bias named; 'searched and not found' is a result worth recording; when two
+  sources disagree keep the precise attributable one and record the
+  disagreement rather than averaging; record harm and exclusion as part of the
+  description; and for communities where being counted is itself the hazard,
+  record the form and do not seek rolls. A smaller honest iteration beats a
+  larger one with a fabricated figure in it."
+ :loop/project "."
+ :loop/workspace-env "COM_JUNKAWASAKI_ROOT"
+ :loop/continuous true
+ :loop/interval-ms 1800000
+ :loop/max-cycles 10
+ :loop/max-failures 4
+ :loop/auto-approve true
+ :loop/organism-name "CommunityCoverage"
+ :loop/runners ["claude" "claude-zai" "codex"]}
