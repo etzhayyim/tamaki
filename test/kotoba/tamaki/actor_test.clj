@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.actor-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.actor :as actor]))
 
 (def spec
@@ -22,6 +23,12 @@
     (is (thrown? Exception
                  (actor/validate-spec
                   (assoc-in spec [:actor/hil-policy :integrate] :silent))))))
+
+(deftest relative-actor-project-is-canonicalized-at-the-file-boundary
+  (let [file (java.io.File/createTempFile "tamaki-actor-" ".edn")]
+    (spit file (pr-str (assoc spec :actor/project ".")))
+    (is (= (.getCanonicalPath (io/file "."))
+           (:actor/project (actor/read-spec (.getPath file)))))))
 
 (deftest reconcile-plan-scales-to-desired-state
   (let [run-0 (actor/replica-run spec 0 1)
