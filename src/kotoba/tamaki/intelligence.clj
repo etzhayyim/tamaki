@@ -123,8 +123,11 @@
                         (map #(str/join " " %))
                         vec)
         blockers (->> paragraphs
-                      (keep #(second (re-find
-                                      #"(?i)blocked by:\s*([0-9a-f]{7,40})" %)))
+                      (mapcat (fn [paragraph]
+                                (when-let [[_ values]
+                                           (re-find #"(?i)blocked by:\s*(.+)"
+                                                    paragraph)]
+                                  (re-seq #"[0-9a-f]{7,40}" values))))
                       set)
         criteria (->> paragraphs
                       (keep #(second (re-find #"(?i)acceptance:\s*(.+)" %)))

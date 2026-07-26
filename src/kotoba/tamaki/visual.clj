@@ -75,26 +75,41 @@
 (defn capture! [state-root now-ms]
   (let [dir (io/file state-root "visual")
         _ (.mkdirs dir)
-        window (delivery/execute! ["swift" "-e" window-query])
-        window-id (some-> (:out window) str/trim not-empty)
+        live (io/file dir "live.png")
         image (io/file dir (str "observatory-" now-ms ".png"))]
-    (if-not (and (zero? (:exit window)) window-id)
-      {:visual/status :unavailable
-       :visual/error "Tamaki Observatory window was not found"}
-      (let [captured (delivery/execute!
-                      ["screencapture" "-x" "-l" window-id
-                       (.getAbsolutePath image)])]
-        (if (and (zero? (:exit captured)) (.isFile image)
-                 (pos? (.length image)))
-          (do
-            (delivery/execute! ["sips" "-Z" "1280" (.getAbsolutePath image)])
-            (prune! dir)
-            {:visual/status :captured
-             :visual/path (.getAbsolutePath image)
-             :visual/bytes (.length image)
-             :visual/window-id window-id})
+    (if (and (.isFile live) (pos? (.length live))
+             (< (- now-ms (.lastModified live)) 30000))
+      (do
+        (io/copy live image)
+        (prune! dir)
+        {:visual/status :captured
+         :visual/path (.getAbsolutePath image)
+         :visual/bytes (.length image)
+         :visual/source :webkit})
+      (let [window (delivery/execute! ["swift" "-e" window-query])
+            window-id (some-> (:out window) str/trim not-empty)]
+        (if-not (and (zero? (:exit window)) window-id)
           {:visual/status :unavailable
-           :visual/error (str/trim (str (:err captured)))})))))
+           :visual/error
+           (str "No fresh WebKit snapshot and Observatory window was not found"
+                (when-let [error (some-> (:err window) str/trim not-empty)]
+                  (str ": " error)))}
+          (let [captured (delivery/execute!
+                          ["screencapture" "-x" "-l" window-id
+                           (.getAbsolutePath image)])]
+            (if (and (zero? (:exit captured)) (.isFile image)
+                     (pos? (.length image)))
+              (do
+                (delivery/execute! ["sips" "-Z" "1280"
+                                    (.getAbsolutePath image)])
+                (prune! dir)
+                {:visual/status :captured
+                 :visual/path (.getAbsolutePath image)
+                 :visual/bytes (.length image)
+                 :visual/source :screen-capture
+                 :visual/window-id window-id})
+              {:visual/status :unavailable
+               :visual/error (str/trim (str (:err captured)))})))))))
 
 (defn- canvas-metrics [project path]
   (let [result (execute-with-timeout

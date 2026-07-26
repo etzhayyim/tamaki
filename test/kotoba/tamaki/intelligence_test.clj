@@ -55,6 +55,12 @@
                "│ across both runtimes          │\n"
                "╰──────────────────────────────╯")))))
 
+(deftest issue-metadata-extracts-every-listed-blocker
+  (is (= #{"abcdef1" "1234567" "fedcba9"}
+         (:issue/blockers
+          (intelligence/parse-issue-metadata
+           (str "│ Blocked by: abcdef1, 1234567 │\n"
+                "│ Blocked by: fedcba9          │"))))))
 (deftest unmanaged-issue-is-not-claimed-by-the-supervisor
   (is (= {:issue/blockers #{}
           :issue/criteria ["owner decides -- keep as-is"]
