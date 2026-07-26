@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.actor-test
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.actor :as actor]))
 
@@ -52,6 +53,38 @@
     (is (= (.getCanonicalPath (io/file dir "../targets.edn"))
            (:actor/business-targets
             (actor/read-spec (.getPath file)))))))
+
+(deftest canonical-issue-topology-drives-replica-work
+  (let [dir (.toFile
+             (java.nio.file.Files/createTempDirectory
+              "tamaki-actor-topology-" (make-array java.nio.file.attribute.FileAttribute 0)))
+        actor-file (io/file dir "actor.edn")
+        topology-file (io/file dir "roadmap.edn")
+        topology {:topology/issues
+                  [{:issue/id "root" :issue/title "Foundation"
+                    :issue/status :integrated :issue/blocked-by []}
+                   {:issue/id "ready" :issue/title "Ready work"
+                    :issue/status :open :issue/priority :p0
+                    :issue/blocked-by ["root"]}
+                   {:issue/id "blocked" :issue/title "Blocked work"
+                    :issue/status :open :issue/priority :p0
+                    :issue/blocked-by ["ready"]}]}]
+    (spit topology-file (pr-str topology))
+    (spit actor-file
+          (pr-str (assoc spec
+                         :actor/project "."
+                         :actor/issue-topology-file "roadmap.edn")))
+    (let [loaded (actor/read-spec (.getPath actor-file))
+          goal (:agent.run/goal (actor/replica-run loaded 0 1))]
+      (is (= (.getCanonicalPath topology-file)
+             (:actor/issue-topology-file loaded)))
+      (is (= ["ready"]
+             (mapv :issue/id
+                   (actor/runnable-issues
+                    (actor/read-issue-topology loaded)))))
+      (is (str/includes? goal "Topology authority: EDN"))
+      (is (str/includes? goal "ready — Ready work"))
+      (is (not (str/includes? goal "blocked — Blocked work"))))))
 
 (deftest reconcile-plan-scales-to-desired-state
   (let [run-0 (actor/replica-run spec 0 1)

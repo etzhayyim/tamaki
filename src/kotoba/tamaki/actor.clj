@@ -9,6 +9,7 @@
 (def active-statuses #{:queued :leased :running :checkpointed :held})
 (def hil-decisions #{:autonomous :voice-required :approval-required :blocked})
 (def default-lease-grace-ms 120000)
+(def integrated-issue-statuses #{:integrated :closed})
 
 (defn actor-id [value]
   (cond
@@ -53,6 +54,7 @@
     (let [spec (edn/read-string (slurp file))
           project (:actor/project spec)
           targets (:actor/business-targets spec)
+          topology (:actor/issue-topology-file spec)
           parent (.getParentFile (.getCanonicalFile file))]
       ;; Actor specs are often portable and use ".". Resolve it at the
       ;; operator boundary so worktree naming never creates a child checkout
@@ -63,7 +65,53 @@
                         (.getCanonicalPath (io/file project)))
          targets (assoc :actor/business-targets
                         (.getCanonicalPath
-                         (io/file parent targets))))))))
+                         (io/file parent targets)))
+         topology (assoc :actor/issue-topology-file
+                         (.getCanonicalPath
+                          (io/file parent topology))))))))
+
+(defn read-issue-topology
+  "Read the repo-owned canonical issue topology referenced by an ActorSpec."
+  [spec]
+  (when-let [path (:actor/issue-topology-file spec)]
+    (let [file (io/file path)]
+      (when-not (.isFile file)
+        (throw (ex-info "Canonical issue topology file not found"
+                        {:actor/id (:actor/id spec) :path path})))
+      (edn/read-string (slurp file)))))
+
+(defn runnable-issues
+  "Select open issues whose blocker entities are integrated or closed.
+  Unknown blockers fail closed."
+  [topology]
+  (let [issues (:topology/issues topology)
+        index (into {} (map (juxt :issue/id identity)) issues)
+        done? (fn [id]
+                (contains? integrated-issue-statuses
+                           (:issue/status (get index id))))]
+    (->> issues
+         (filter #(= :open (:issue/status %)))
+         (filter #(every? done? (:issue/blocked-by %)))
+         (sort-by (juxt :issue/priority :issue/id))
+         vec)))
+
+(defn- topology-prompt [spec]
+  (when-let [topology (read-issue-topology spec)]
+    (let [runnable (runnable-issues topology)]
+      (str "\nCanonical issue topology (EDN): "
+           (:actor/issue-topology-file spec)
+           ". Topology authority: EDN; forge issues are projections."
+           "\nRunnable issues: "
+           (if (seq runnable)
+             (str/join ", "
+                       (map (fn [issue]
+                              (str (:issue/id issue) " — "
+                                   (:issue/title issue)))
+                            runnable))
+             "none")
+           ". Work only on a listed runnable issue. Update its EDN state "
+           "only when source, tests, review, or integration evidence exists; "
+           "then reconcile the projection to the declared issue authority."))))
 
 (defn runner-pool [spec]
   (let [runners (:actor/runners spec)
@@ -199,6 +247,7 @@
                  ". Issue and delivery authority: "
                  (name (or (:actor/issue-authority spec) :unspecified))
                  ". Never publish through a different authority."
+                 (or (topology-prompt spec) "")
                  "\nProcess the highest-leverage unblocked work item within "
                  "the declared capabilities and governor policy.")
       :project (:actor/project spec)
