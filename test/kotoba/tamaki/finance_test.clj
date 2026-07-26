@@ -13,3 +13,9 @@
        (finance/event {:org :example :period "2026-07"
                        :bs {:assets 100 :liabilities 40 :equity 50}}
                       1))))
+  (is (= :finance/observed
+         (:tamaki.event/kind
+          (finance/event {:owner {:kind :personal :ref :owner/self}
+                          :period "2026-07"
+                          :bs {:assets 10 :liabilities 0 :equity 10}}
+                         1))))
