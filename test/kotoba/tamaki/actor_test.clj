@@ -45,3 +45,47 @@
         plan (actor/reconcile-plan scaled runs)]
     (is (= 2 (count (:cancel plan))))
     (is (= 0 (:spawn plan)))))
+
+(deftest effective-desired-scales-up-under-pressure
+  (let [scaled (assoc-in spec [:actor/scale]
+                         {:min 1 :desired 2 :max 5
+                          :scale-up-on {:queue-depth 3 :blocker-count 2}
+                          :scale-down-after-ms 300000})
+        held [(assoc (actor/replica-run scaled 0 1)
+                     :agent.run/status :held)
+              (assoc (actor/replica-run scaled 1 2)
+                     :agent.run/status :held)]]
+    (testing "held replicas at the blocker threshold raise capacity"
+      (is (= 4 (actor/effective-desired scaled held)))
+      (let [plan (actor/reconcile-plan scaled held)]
+        (is (= 4 (:desired plan)))
+        (is (= 2 (:blocked plan)))
+        (is (= 2 (:spawn plan)))))
+    (testing "queued backlog at the queue-depth threshold raises capacity"
+      (let [backlog (mapv #(actor/replica-run scaled % (+ 10 %)) (range 2))
+            tight (assoc-in scaled [:actor/scale :scale-up-on :queue-depth] 2)]
+        (is (= 3 (actor/effective-desired tight backlog)))
+        (is (= 1 (:spawn (actor/reconcile-plan tight backlog))))))
+    (testing "effective desired never exceeds :max"
+      (let [many-held (mapv #(assoc (actor/replica-run scaled % %)
+                                    :agent.run/status :held)
+                            (range 4))]
+        (is (= 5 (actor/effective-desired scaled many-held)))))))
+
+(deftest scale-down-honours-idle-grace-period
+  (let [scaled (assoc-in spec [:actor/scale]
+                         {:min 1 :desired 1 :max 5
+                          :scale-down-after-ms 300000})
+        runs [(assoc (actor/replica-run scaled 0 1000)
+                     :agent.run/updated-at 1000)
+              (assoc (actor/replica-run scaled 1 1000)
+                     :agent.run/updated-at 1000)
+              (assoc (actor/replica-run scaled 2 1000)
+                     :agent.run/status :running
+                     :agent.run/updated-at 1000)]]
+    (testing "excess queued replicas are not cancelled before the grace period"
+      (is (= [] (:cancel (actor/reconcile-plan scaled runs 200000)))))
+    (testing "once idle long enough, safe scale-down candidates are cancelled"
+      (let [plan (actor/reconcile-plan scaled runs 400000)]
+        (is (= 2 (count (:cancel plan))))
+        (is (= 0 (:spawn plan)))))))

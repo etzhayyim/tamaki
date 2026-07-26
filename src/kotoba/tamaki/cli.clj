@@ -4,8 +4,10 @@
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [kotoba.tamaki.adapters :as adapters]
+            [kotoba.tamaki.active-inference :as active-inference]
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.delivery :as delivery]
+            [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
@@ -38,6 +40,7 @@
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
+       "  tamaki evolve propose|status|transition|open-pr|promote ...\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -106,7 +109,7 @@
     (submit! (assoc parsed :positional [goal]))))
 
 (defn actor-status [spec]
-  (actor/reconcile-plan spec (remove nil? (vals (runs)))))
+  (actor/reconcile-plan spec (remove nil? (vals (runs))) (now)))
 
 (defn reconcile-actor!
   [spec execute?]
@@ -179,6 +182,237 @@
       (throw (ex-info
               "Usage: tamaki actor validate|status|reconcile SPEC.edn"
               {})))))
+
+(defn evolution-candidates []
+  (evolution/candidates (events)))
+
+(defn evolution-candidate! [id]
+  (or (get (evolution-candidates) id)
+      (throw (ex-info "Unknown evolution candidate" {:evolution/id id}))))
+
+(defn append-evolution! [candidate kind data]
+  (store/append-event! (store/default-root)
+                       (evolution/event candidate kind (now) data)))
+
+(defn evolve-propose!
+  [{:keys [positional options]}]
+  (let [issue (parse-long (second positional))
+        project (or (:project options) (.getAbsolutePath (io/file ".")))
+        objective (:objective options)]
+    (when-not (pos-int? issue)
+      (throw (ex-info "evolve propose requires a GitHub issue number" {})))
+    (delivery/succeeded!
+     (delivery/execute! ["gh" "issue" "view" (str issue)] project)
+     "GitHub evolution issue lookup")
+    (let [status (delivery/succeeded!
+                  (delivery/execute! (delivery/git-status-command) project)
+                  "evolution clean-tree check")]
+      (when (seq (delivery/porcelain-paths (:out status)))
+        (throw (ex-info "Evolution proposal requires a clean canonical tree"
+                        {:paths (delivery/porcelain-paths (:out status))}))))
+    (let [base (-> (delivery/succeeded!
+                    (delivery/execute! (delivery/git-head-command) project)
+                    "evolution base commit")
+                   :out str/trim)
+          timestamp (now)
+          branch (str "evolution/issue-" issue "-" timestamp)
+          worktree (.getAbsolutePath
+                    (io/file (.getParentFile (io/file project))
+                             (str ".tamaki-" (.getName (io/file project))
+                                  "-evolution-" issue "-" timestamp)))
+          created (delivery/execute!
+                   ["git" "-C" project "worktree" "add" "-b"
+                    branch worktree base]
+                   project)]
+      (delivery/succeeded! created "isolated evolution worktree creation")
+      (let [candidate (evolution/candidate
+                       {:issue issue :objective objective :project project
+                        :base-commit base :branch branch :worktree worktree}
+                       timestamp)]
+        (append-evolution! candidate :evolution/proposed
+                           {:candidate candidate})
+        (print-edn candidate)
+        0))))
+
+(defn parse-evolution-evidence [options]
+  (cond-> {}
+    (:commit options) (assoc :evolution/commit (:commit options))
+    (:pr-url options) (assoc :evolution/pr-url (:pr-url options))
+    (:tests-passed options) (assoc :evolution/tests-passed?
+                                   (= "true" (:tests-passed options)))
+    (:review-accepted options) (assoc :evolution/review-accepted?
+                                     (= "true" (:review-accepted options)))
+    (:replay-passed options) (assoc :evolution/replay-passed?
+                                   (= "true" (:replay-passed options)))
+    (:canary-passed options) (assoc :evolution/canary-passed?
+                                   (= "true" (:canary-passed options)))
+    (:fitness-before options) (assoc :evolution/fitness-before
+                                     (edn/read-string (:fitness-before options)))
+    (:fitness-after options) (assoc :evolution/fitness-after
+                                    (edn/read-string (:fitness-after options)))))
+
+(defn evolve-transition!
+  [{:keys [positional options]}]
+  (let [id (second positional)
+        status (some-> (nth positional 2 nil) keyword)
+        candidate (evolution-candidate! id)
+        evidence (parse-evolution-evidence options)]
+    ;; Validate before appending; a malformed durable event must never poison
+    ;; the candidate fold.
+    (let [next-candidate (evolution/transition candidate status (now) evidence)]
+      (append-evolution! candidate :evolution/transition
+                         {:status status :evidence evidence})
+      (print-edn next-candidate)
+      0)))
+
+(defn evolve-open-pr!
+  [{:keys [positional options]}]
+  (let [candidate (evolution-candidate! (second positional))
+        worktree (:evolution/worktree candidate)
+        branch (:evolution/branch candidate)
+        title (or (:title options)
+                  (str "evolve: " (:evolution/objective candidate)))
+        issue (:evolution/issue candidate)]
+    (when-not (contains? #{:tested :reviewed :canary :awaiting-human}
+                         (:evolution/status candidate))
+      (throw (ex-info "PR requires a tested evolution candidate"
+                      {:status (:evolution/status candidate)})))
+    (delivery/succeeded!
+     (delivery/execute! ["git" "push" "-u" "origin" branch] worktree)
+     "evolution branch push")
+    (let [result (delivery/succeeded!
+                  (delivery/execute!
+                   ["gh" "pr" "create" "--draft" "--title" title
+                    "--body"
+                    (str "Evolution candidate `" (:evolution/id candidate)
+                         "`.\n\nCloses #" issue
+                         "\n\nPromotion remains gated by tests, independent "
+                         "review, historical replay, canary, and voice approval.")
+                    "--head" branch]
+                   worktree)
+                  "draft evolution PR creation")
+          pr-url (str/trim (:out result))
+          evidence {:evolution/pr-url pr-url}]
+      (append-evolution! candidate :evolution/evidence
+                         {:evidence evidence})
+      (print-edn (assoc candidate :evolution/pr-url pr-url))
+      0)))
+
+(defn replay-durable-state! []
+  (let [durable-events (events)]
+    (model/fold-events durable-events)
+    (agent-loop/campaigns durable-events)
+    (evolution/candidates durable-events)
+    true))
+
+(defn evolve-verify!
+  [{:keys [positional command]}]
+  (let [candidate (evolution-candidate! (second positional))]
+    (when-not (= :implemented (:evolution/status candidate))
+      (throw (ex-info "Verification requires an implemented candidate"
+                      {:status (:evolution/status candidate)})))
+    (when (empty? command)
+      (throw (ex-info "evolve verify requires -- TEST_COMMAND" {})))
+    (let [canonical-head
+          (-> (delivery/succeeded!
+               (delivery/execute!
+                (delivery/git-head-command)
+                (:evolution/project candidate))
+               "canonical isolation check")
+              :out str/trim)]
+      (when-not (= canonical-head (:evolution/base-commit candidate))
+        (throw (ex-info "Canonical tree moved during candidate evaluation"
+                        {:expected (:evolution/base-commit candidate)
+                         :actual canonical-head}))))
+    (let [tests (delivery/execute! command (:evolution/worktree candidate))
+          replay? (try (replay-durable-state!)
+                       (catch Exception _ false))
+          passed? (and (zero? (:exit tests)) replay?)
+          status (if passed? :tested :rejected)
+          evidence {:evolution/tests-passed? (zero? (:exit tests))
+                    :evolution/replay-passed? replay?
+                    :evolution/test-command command
+                    :evolution/test-exit (:exit tests)}]
+      (append-evolution! candidate :evolution/transition
+                         {:status status :evidence evidence})
+      (print-edn {:evolution/id (:evolution/id candidate)
+                  :status status :evidence evidence})
+      (if passed? 0 1))))
+
+(defn evolve-canary!
+  [{:keys [positional command]}]
+  (let [candidate (evolution-candidate! (second positional))]
+    (when-not (= :reviewed (:evolution/status candidate))
+      (throw (ex-info "Canary requires an independently reviewed candidate"
+                      {:status (:evolution/status candidate)})))
+    (when (empty? command)
+      (throw (ex-info "evolve canary requires -- CANARY_COMMAND" {})))
+    (let [result (delivery/execute! command (:evolution/worktree candidate))
+          passed? (zero? (:exit result))
+          status (if passed? :canary :rejected)
+          evidence {:evolution/canary-passed? passed?
+                    :evolution/canary-command command
+                    :evolution/canary-exit (:exit result)}]
+      (append-evolution! candidate :evolution/transition
+                         {:status status :evidence evidence})
+      (print-edn {:evolution/id (:evolution/id candidate)
+                  :status status :evidence evidence})
+      (if passed? 0 1))))
+
+(defn evolve-promote!
+  [{:keys [positional]}]
+  (let [candidate (evolution-candidate! (second positional))]
+    (when-not (evolution/promotion-ready? candidate)
+      (throw (ex-info "Evolution candidate is not promotion-ready"
+                      {:candidate candidate})))
+    (let [{:keys [decision]}
+          (supervisor/consult!
+           {:title "Tamaki self-evolution promotion"
+            :summary (str "Candidate " (:evolution/id candidate)
+                          " passed tests, review, replay and canary.")
+            :action (str "Merge " (:evolution/pr-url candidate))
+            :impact "Changes Tamaki's own future behavior."
+            :voice? true})]
+      (if (= :approved decision)
+        (do
+          (delivery/succeeded!
+           (delivery/execute!
+            ["gh" "pr" "merge" (:evolution/pr-url candidate) "--squash"]
+            (:evolution/worktree candidate))
+           "evolution PR promotion")
+          (append-evolution! candidate :evolution/transition
+                             {:status :promoted
+                              :evidence {:hil/decision decision}})
+          (print-edn {:evolution/id (:evolution/id candidate)
+                      :result :promoted})
+          0)
+        (do
+          (append-evolution! candidate :evolution/transition
+                             {:status :rejected
+                              :evidence {:hil/decision decision}})
+          (print-edn {:evolution/id (:evolution/id candidate)
+                      :result :rejected})
+          1)))))
+
+(defn evolve!
+  [{:keys [positional] :as parsed}]
+  (case (first positional)
+    "propose" (evolve-propose! parsed)
+    "status" (do
+               (print-edn
+                (if-let [id (second positional)]
+                  (evolution-candidate! id)
+                  (->> (vals (evolution-candidates))
+                       (sort-by :evolution/updated-at >) vec)))
+               0)
+    "transition" (evolve-transition! parsed)
+    "verify" (evolve-verify! parsed)
+    "canary" (evolve-canary! parsed)
+    "open-pr" (evolve-open-pr! parsed)
+    "promote" (evolve-promote! parsed)
+    (throw (ex-info
+            "Usage: tamaki evolve propose|status|transition|verify|open-pr|canary|promote"
+            {}))))
 
 (defn submit!
   [{:keys [positional options]}]
@@ -839,7 +1073,39 @@
                               (merge metadata)
                               (update :issue/signals merge dynamics)))))
                      (filterv :issue/managed?))
-                selected (intelligence/selection candidates)
+                prior-belief
+                (some->> (events)
+                         (filter #(and (= id (:tamaki.event/run %))
+                                       (= :inference/belief-updated
+                                          (:tamaki.event/kind %))))
+                         last :tamaki.event/data :belief)
+                belief (active-inference/belief-state
+                        prior-belief
+                        (merge intelligence/default-signals dynamics))
+                eligible (intelligence/rank candidates)
+                selected-policy
+                (active-inference/select-policy
+                 belief
+                 (mapv (fn [candidate]
+                         {:id (:issue/id candidate)
+                          :observations (:issue/signals candidate)})
+                       eligible))
+                selected-node
+                (some #(when (= (:issue/id %)
+                                (:policy/id selected-policy)) %)
+                      eligible)
+                selected
+                (when selected-node
+                  {:issue selected-node
+                   :score (intelligence/leverage-score selected-node)
+                   :blocked-count (- (count candidates) (count eligible))
+                   :candidate-count (count candidates)
+                   :ranking (mapv :issue/id eligible)
+                   :inference selected-policy})
+                _ (append-loop-event!
+                   campaign :inference/belief-updated
+                   {:loop/cycle cycle :belief belief
+                    :policy selected-policy})
                 criteria (or (seq (get-in selected [:issue :issue/criteria]))
                              (intelligence/acceptance-criteria
                               (:tamaki.loop/objective campaign)))
@@ -1046,6 +1312,7 @@
       "consult" (consult! parsed)
       "voice" (or (voice! parsed) 0)
       "actor" (actor! parsed)
+      "evolve" (evolve! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

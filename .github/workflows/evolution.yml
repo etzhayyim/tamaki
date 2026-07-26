@@ -1,0 +1,28 @@
+name: evolution-candidate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  governed-evolution:
+    if: startsWith(github.head_ref, 'evolution/') || startsWith(github.head_ref, 'agent/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: latest
+      - name: Verify issue-backed candidate
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! printf '%s' "$PR_BODY" | grep -Eq '(Closes|Fixes|Refs) #[0-9]+'; then
+            echo "Evolution PR must reference its GitHub Issue." >&2
+            exit 1
+          fi
+      - name: Deterministic tests
+        run: clojure -M:test

@@ -69,28 +69,77 @@
          (sort-by :agent.run/created-at)
          vec)))
 
-(defn reconcile-plan
+(defn- scale-up-extra
+  "Extra replicas warranted by declared :scale-up-on pressure."
+  [scale active]
+  (let [{:keys [queue-depth blocker-count]} (:scale-up-on scale)
+        queued (count (filter #(= :queued (:agent.run/status %)) active))
+        blocked (count (filter #(= :held (:agent.run/status %)) active))]
+    (cond-> 0
+      (and queue-depth (integer? queue-depth) (pos? queue-depth)
+           (>= queued queue-depth))
+      (+ (max 1 (inc (- queued queue-depth))))
+      (and blocker-count (integer? blocker-count) (pos? blocker-count)
+           (>= blocked blocker-count))
+      (+ blocked))))
+
+(defn effective-desired
+  "Baseline :desired raised by live scale-up pressure, clamped to [min, max].
+
+  Declared ActorSpec keys:
+  - :scale-up-on {:queue-depth N :blocker-count N}
+    When queued or held replicas cross a threshold, raise capacity so HIL-held
+    workers do not stall the whole actor and backlog does not sit forever.
+  - :scale-down-after-ms (honoured by reconcile-plan cancel selection)"
   [spec runs]
   (let [spec (validate-spec spec)
-        all (actor-runs spec runs)
-        active (filterv #(contains? active-statuses (:agent.run/status %)) all)
-        desired (get-in spec [:actor/scale :desired])
-        delta (- desired (count active))]
-    {:actor/id (:actor/id spec)
-     :desired desired
-     :running (count (filter #(contains? #{:leased :running :checkpointed}
-                                         (:agent.run/status %)) active))
-     :queued (count (filter #(= :queued (:agent.run/status %)) active))
-     :blocked (count (filter #(= :held (:agent.run/status %)) active))
-     :spawn (max 0 delta)
-     :cancel (if (neg? delta)
-               (mapv :agent.run/id
-                     (take (- delta)
-                           (filter #(contains? #{:queued :held}
-                                               (:agent.run/status %))
-                                   (reverse active))))
-               [])
-     :active active}))
+        scale (:actor/scale spec)
+        {:keys [min desired] max-capacity :max} scale
+        active (->> (actor-runs spec runs)
+                    (filterv #(contains? active-statuses (:agent.run/status %))))
+        raised (+ desired (scale-up-extra scale active))]
+    (-> raised (clojure.core/min max-capacity) (clojure.core/max min))))
+
+(defn- cancel-candidates
+  [active now-ms scale-down-after-ms]
+  (->> active
+       reverse
+       (filter #(contains? #{:queued :held} (:agent.run/status %)))
+       (filter (fn [run]
+                 (or (nil? scale-down-after-ms)
+                     (nil? now-ms)
+                     (let [updated (or (:agent.run/updated-at run)
+                                       (:agent.run/created-at run)
+                                       0)]
+                       (>= (- now-ms updated) scale-down-after-ms)))))
+       vec))
+
+(defn reconcile-plan
+  "Plan spawn/cancel actions to reach effective desired capacity.
+
+  Optional now-ms enables :scale-down-after-ms so excess replicas are only
+  cancelled after they have been idle (queued/held) long enough."
+  ([spec runs] (reconcile-plan spec runs nil))
+  ([spec runs now-ms]
+   (let [spec (validate-spec spec)
+         scale (:actor/scale spec)
+         all (actor-runs spec runs)
+         active (filterv #(contains? active-statuses (:agent.run/status %)) all)
+         desired (effective-desired spec runs)
+         delta (- desired (count active))
+         cancellable (cancel-candidates active now-ms
+                                        (:scale-down-after-ms scale))]
+     {:actor/id (:actor/id spec)
+      :desired desired
+      :running (count (filter #(contains? #{:leased :running :checkpointed}
+                                          (:agent.run/status %)) active))
+      :queued (count (filter #(= :queued (:agent.run/status %)) active))
+      :blocked (count (filter #(= :held (:agent.run/status %)) active))
+      :spawn (max 0 delta)
+      :cancel (if (neg? delta)
+                (mapv :agent.run/id (take (- delta) cancellable))
+                [])
+      :active active})))
 
 (defn replica-run
   [spec replica-index now-ms]

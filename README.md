@@ -231,3 +231,48 @@ bb test
 clojure -M:test
 bin/tamaki doctor
 ```
+
+## Governed self-evolution
+
+Normal delivery remains Radicle-native. Changes to Tamaki's own future
+behaviour use a stricter GitHub-backed promotion boundary:
+
+```text
+GitHub Issue
+  -> isolated evolution/* worktree
+  -> implementation
+  -> deterministic tests + durable-event replay
+  -> draft GitHub PR
+  -> independent review
+  -> canary
+  -> fitness comparison
+  -> voice approval
+  -> squash promotion or rejection
+```
+
+The canonical tree is never the mutation workspace. Start a candidate only
+from a clean canonical checkout:
+
+```sh
+bin/tamaki evolve propose 4 \
+  --project "$PWD" \
+  --objective "Implement explicit active inference and safe self-evolution"
+```
+
+After committing inside the returned worktree, advance the durable lifecycle:
+
+```sh
+bin/tamaki evolve transition CANDIDATE :implemented --commit SHA
+bin/tamaki evolve verify CANDIDATE -- clojure -M:test
+bin/tamaki evolve open-pr CANDIDATE --title "evolve: active inference"
+bin/tamaki evolve transition CANDIDATE :reviewed --review-accepted true
+bin/tamaki evolve canary CANDIDATE -- clojure -M:test
+bin/tamaki evolve transition CANDIDATE :awaiting-human \
+  --fitness-before '{:tests 68 :assertions 202 :failures 1}' \
+  --fitness-after '{:tests 75 :assertions 226 :failures 0}'
+bin/tamaki evolve promote CANDIDATE
+```
+
+Promotion fails closed unless the candidate has a GitHub Issue and PR, green
+tests, independent review, historical replay, a green canary, improved fitness,
+and explicit voice approval.

@@ -1,9 +1,11 @@
 (ns kotoba.tamaki.test-runner
   (:require [clojure.test :as test]
+            [kotoba.tamaki.active-inference-test]
             [kotoba.tamaki.actor-test]
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
             [kotoba.tamaki.delivery-test]
+            [kotoba.tamaki.evolution-test]
             [kotoba.tamaki.loop-test]
             [kotoba.tamaki.intelligence-test]
             [kotoba.tamaki.model-test]
@@ -15,10 +17,12 @@
 
 (defn run [_]
   (let [result (test/run-tests 'kotoba.tamaki.model-test
+                               'kotoba.tamaki.active-inference-test
                                'kotoba.tamaki.actor-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
                                'kotoba.tamaki.delivery-test
+                               'kotoba.tamaki.evolution-test
                                'kotoba.tamaki.loop-test
                                'kotoba.tamaki.intelligence-test
                                'kotoba.tamaki.runners-test
