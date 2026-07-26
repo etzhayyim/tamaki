@@ -196,11 +196,11 @@ Shipped registrations:
 
 `bin/tamaki-supervisor` loads `TAMAKI_LOOP_SPEC` (default
 `loops/revenue-growth.edn`) instead of baking the objective string into the
-shell script. It also ensures `TAMAKI_EXTRA_LOOP_SPEC` (default
-`loops/toshokan-maturity.edn`) so the maturity campaign is registered and
-visible to `loop list`. CLI flags and env vars remain overrides on top of the
-EDN base. Campaigns store `:tamaki.loop/spec-id` so objective prose can change
-without forking a second campaign.
+shell script. Set `TAMAKI_EXTRA_LOOP_SPEC` explicitly to ensure an additional
+registration; it is empty by default because an ensured campaign still needs
+its own resident `loop run` process. CLI flags and env vars remain overrides on
+top of the EDN base. Campaigns store `:tamaki.loop/spec-id` so objective prose
+can change without forking a second campaign.
 
 ### Ad-hoc CLI (still supported)
 

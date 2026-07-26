@@ -13,8 +13,9 @@ max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-}"
 actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.edn}"
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
 self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
-# Optional second continuous loop (e.g. toshokan maturity). Empty = skip.
-extra_loop_spec="${TAMAKI_EXTRA_LOOP_SPEC:-$tamaki_root/loops/toshokan-maturity.edn}"
+# Optional second continuous loop. Empty by default because merely ensuring a
+# campaign without a resident runner would present inactive work as active.
+extra_loop_spec="${TAMAKI_EXTRA_LOOP_SPEC:-}"
 
 cd "$tamaki_root"
 export COM_JUNKAWASAKI_ROOT="${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/../../.." && pwd)}"
