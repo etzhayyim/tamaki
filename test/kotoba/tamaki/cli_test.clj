@@ -72,6 +72,7 @@
         args ["loop" "ensure"
               "--project" "/tmp/project"
               "--objective" "operate continuously"
+              "--organism-name" "Hikari"
               "--runners" "codex,claude"
               "--continuous"]]
     (with-redefs [store/default-root (constantly root)

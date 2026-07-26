@@ -1043,11 +1043,18 @@
                     (filter #(= :active (:tamaki.loop/status %))))
         compatible?
         (fn [campaign]
-          (and (= (:project options) (:tamaki.loop/project campaign))
+          (let [individual (:tamaki.loop/organism campaign)]
+            (and (= (:project options) (:tamaki.loop/project campaign))
                (= (:objective options) (:tamaki.loop/objective campaign))
                (= expected-runners (:tamaki.loop/runners campaign))
                (= (boolean (:auto-approve options))
-                  (:tamaki.loop/auto-approve campaign))))
+                  (:tamaki.loop/auto-approve campaign))
+               (= (:organism-name options)
+                  (:organism/given-name individual))
+               (= (parse-long-option options :organism-generation 1)
+                  (:organism/generation individual))
+               (= (:organism-parent options)
+                  (:organism/parent individual)))))
         canonical (last (sort-by :tamaki.loop/updated-at
                                  (filter compatible? active)))]
     (doseq [campaign active
