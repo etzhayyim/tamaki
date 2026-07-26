@@ -112,6 +112,34 @@ needs neither `kotoba-code` nor a fleet node. The subprocess's exit code becomes
 data tick that way would claim an agent did work it did not do; `exec` exists so
 residents can register real runs honestly.
 
+## Content reaction loop
+
+Tamaki connects private creation repositories to public channels without
+putting organization details or credentials in this public repository. The
+local control plane declares the content organism, channels, credential
+references, and issue authority.
+
+```sh
+# Planning is safe and secret-free. It stops at the approval boundary.
+bin/tamaki content plan \
+  --spec /path/to/private-control/content-loops/example.edn \
+  --artifact /path/to/runtime/artifact-manifest.edn
+
+# Repeat with --approve only after a human has inspected the artifact.
+# This authorizes a configured provider adapter; the pure Tamaki contract
+# itself does not upload or retain provider credentials.
+
+# Provider collectors normalize real post-publication facts.
+bin/tamaki content observe --file /path/to/runtime/reaction.edn
+bin/tamaki content status --id example
+```
+
+The feedback decision prioritizes discovery, completion/retention, engagement,
+conversion, then a follow-up. Missing observations remain
+`:await-observation`; Tamaki never fabricates audience response. Drafting,
+rendering, tests, and publication manifests may run autonomously, while
+publishing remains `:approval-required` and deletion remains blocked.
+
 `nodes` and `tick` delegate to `kotoba-fleet`; `infer` and `murakumo` delegate
 to the existing Murakumo operators. Their remaining arguments pass through
 unchanged, so Tamaki stays one operator entry point without forking those

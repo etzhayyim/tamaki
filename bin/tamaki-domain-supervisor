@@ -7,6 +7,7 @@ workspace_root="${TAMAKI_WORKSPACE:-${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/.
 control_root="${TAMAKI_CONTROL_ROOT:-$workspace_root/projects/.tamaki/tamaki-control}"
 actor_dir="${TAMAKI_ACTOR_SPEC_DIR:-$control_root/actors}"
 collector_dir="${TAMAKI_COLLECTOR_SPEC_DIR:-$control_root/collectors}"
+reaction_collector_dir="${TAMAKI_REACTION_COLLECTOR_SPEC_DIR:-$collector_dir/content}"
 concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-3}"
 cd "$tamaki_root"
 export TAMAKI_WORKSPACE="$workspace_root"
@@ -46,6 +47,12 @@ while true; do
       # `kpi collect` records zero confidence and exits non-zero when stale.
       bin/tamaki kpi collect --spec "$collector" \
         --targets "$control_root/business-targets.edn" || true
+    fi
+    reaction_collector="$reaction_collector_dir/$(basename "$spec")"
+    if [[ -f "$reaction_collector" ]]; then
+      # Provider export jobs own these local snapshots. Missing data is
+      # explicitly unavailable and must never be replaced by synthetic facts.
+      bin/tamaki content collect --spec "$reaction_collector" || true
     fi
     bin/tamaki actor reconcile "$spec" --execute &
     pids+=("$!")

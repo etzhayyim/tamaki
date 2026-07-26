@@ -8,6 +8,7 @@
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.business :as business]
             [kotoba.tamaki.bridge :as bridge]
+            [kotoba.tamaki.content :as content]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
@@ -48,6 +49,10 @@
        "  tamaki kpi status [--targets FILE]\n"
        "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
        "  tamaki kpi collect --spec COLLECTOR.edn [--targets FILE]\n"
+       "  tamaki content plan --spec LOOP.edn --artifact ARTIFACT.edn [--approve]\n"
+       "  tamaki content observe --file REACTION.edn\n"
+       "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
+       "  tamaki content status --id CONTENT-ID\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
@@ -143,6 +148,56 @@
         (if (:collector/fresh? result) 0 1)))
 
     (throw (ex-info "Usage: tamaki kpi status|observe|collect ..." {}))))
+
+(defn content!
+  [{:keys [positional options]}]
+  (case (first positional)
+    "plan"
+    (let [spec-path (:spec options)
+          artifact-path (:artifact options)]
+      (when (or (str/blank? spec-path) (str/blank? artifact-path))
+        (throw (ex-info
+                "content plan requires --spec LOOP.edn --artifact ARTIFACT.edn"
+                {})))
+      (print-edn
+       (content/publication-plan
+        (content/read-spec spec-path)
+        (edn/read-string (slurp (io/file artifact-path)))
+        (boolean (:approve options))))
+      0)
+
+    "observe"
+    (let [path (:file options)]
+      (when (str/blank? path)
+        (throw (ex-info "content observe requires --file REACTION.edn" {})))
+      (let [observation (edn/read-string (slurp (io/file path)))
+            event (content/observation-event observation (now))]
+        (store/append-event! (store/default-root) event)
+        (print-edn (:tamaki.event/data event))
+        0))
+
+    "collect"
+    (let [path (:spec options)]
+      (when (str/blank? path)
+        (throw (ex-info
+                "content collect requires --spec REACTION-COLLECTOR.edn" {})))
+      (let [spec (edn/read-string (slurp (io/file path)))
+            result (content/collect spec)]
+        (if-let [observation (:observation result)]
+          (let [event (content/observation-event observation (now))]
+            (store/append-event! (store/default-root) event)
+            (print-edn (assoc result :reaction (:tamaki.event/data event)))
+            0)
+          (do (print-edn result) 1))))
+
+    "status"
+    (let [id (:id options)]
+      (when (str/blank? id)
+        (throw (ex-info "content status requires --id CONTENT-ID" {})))
+      (print-edn (content/status (events) (keyword id)))
+      0)
+
+    (throw (ex-info "Usage: tamaki content plan|observe|status ..." {}))))
 
 (declare execute-run! submit! require-run!)
 
@@ -1723,6 +1778,7 @@
       "voice" (or (voice! parsed) 0)
       "actor" (actor! parsed)
       "kpi" (kpi! parsed)
+      "content" (content! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)

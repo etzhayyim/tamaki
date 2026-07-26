@@ -6,6 +6,7 @@
             [kotoba.tamaki.bridge-test]
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
+            [kotoba.tamaki.content-test]
             [kotoba.tamaki.delivery-test]
             [kotoba.tamaki.evolution-test]
             [kotoba.tamaki.loop-test]
@@ -32,6 +33,7 @@
                                'kotoba.tamaki.bridge-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
+                               'kotoba.tamaki.content-test
                                'kotoba.tamaki.delivery-test
                                'kotoba.tamaki.evolution-test
                                'kotoba.tamaki.loop-test
