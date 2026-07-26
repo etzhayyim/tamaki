@@ -56,6 +56,27 @@
         (is (= 1 (count active)))
         (is (false? (:tamaki.loop/auto-approve (first active))))))))
 
+(deftest github-evolution-boundary-stops-only-matching-active-loops
+  (let [root (temp-root)
+        project-a "/tmp/project-a"
+        project-b "/tmp/project-b"]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (call ["loop" "start" "--project" project-a "--objective" "evolve a"])
+      (call ["loop" "start" "--project" project-b "--objective" "evolve b"])
+      (let [{:keys [value exit]}
+            (call ["loop" "stop-active" "--project" project-a
+                   "--reason" "github-evolution-boundary"])
+            campaigns (vals (cli/campaigns))
+            a (first (filter #(= project-a (:tamaki.loop/project %)) campaigns))
+            b (first (filter #(= project-b (:tamaki.loop/project %)) campaigns))]
+        (is (zero? exit))
+        (is (= 1 (count (:stopped value))))
+        (is (= :completed (:tamaki.loop/status a)))
+        (is (= :github-evolution-boundary (:tamaki.loop/stop-reason a)))
+        (is (= :active (:tamaki.loop/status b)))))))
+
 (deftest public-submit-status-and-agents
   (let [root (temp-root)]
     (with-redefs [store/default-root (constantly root)

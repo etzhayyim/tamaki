@@ -36,7 +36,7 @@
        "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
-       "  tamaki loop start|status|tick|run ...\n"
+       "  tamaki loop start|ensure|status|stop-active|tick|run ...\n"
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
@@ -940,6 +940,25 @@
                     (sort-by :tamaki.loop/updated-at >) vec)))
   0)
 
+(defn stop-active-loops!
+  "Durably complete active campaigns, optionally limited to one project.
+  This is the safety boundary used when GitHub-governed self-evolution owns
+  promotion and the legacy Radicle loop must not continue mutating code."
+  [{:keys [options]}]
+  (let [project (:project options)
+        reason (keyword (or (:reason options) "operator-requested"))
+        active (->> (vals (campaigns))
+                    (filter #(= :active (:tamaki.loop/status %)))
+                    (filter #(or (str/blank? project)
+                                 (= project (:tamaki.loop/project %))))
+                    vec)]
+    (doseq [campaign active]
+      (append-loop-event! campaign :loop/completed {:reason reason}))
+    (print-edn {:stopped (mapv :tamaki.loop/id active)
+                :project project
+                :reason reason})
+    0))
+
 (defn latest-run-event [run-id kind]
   (last (filter #(and (= run-id (:tamaki.event/run %))
                       (= kind (:tamaki.event/kind %)))
@@ -1281,9 +1300,10 @@
       "start" (start-loop! parsed)
       "ensure" (ensure-loop! parsed)
       "status" (loop-status! id)
+      "stop-active" (stop-active-loops! parsed)
       "tick" (tick-loop! id)
       "run" (run-loop! id)
-      (throw (ex-info "Usage: tamaki loop start|ensure|status|tick|run ..."
+      (throw (ex-info "Usage: tamaki loop start|ensure|status|stop-active|tick|run ..."
                       {})))))
 
 (defn dispatch

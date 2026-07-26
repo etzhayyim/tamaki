@@ -276,3 +276,8 @@ bin/tamaki evolve promote CANDIDATE
 Promotion fails closed unless the candidate has a GitHub Issue and PR, green
 tests, independent review, historical replay, a green canary, improved fitness,
 and explicit voice approval.
+
+The resident supervisor defaults to `TAMAKI_SELF_EVOLUTION_MODE=github`.
+At startup it durably completes active legacy self-modification campaigns for
+the Tamaki checkout, so a Radicle patch cannot bypass this boundary. Set the
+mode to `radicle` only when intentionally operating the legacy loop.

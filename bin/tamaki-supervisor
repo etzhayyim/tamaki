@@ -9,18 +9,28 @@ interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-900000}"
 max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-4}"
 actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.edn}"
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
+self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-github}"
 
 cd "$tamaki_root"
-loop_id="$(
-  bin/tamaki loop ensure \
+loop_id=""
+if [[ "$self_evolution_mode" == "github" ]]; then
+  # GitHub Issue/PR evolution is fail-closed: retire every legacy campaign so
+  # it cannot integrate a Radicle patch directly into the canonical checkout.
+  bin/tamaki loop stop-active \
     --project "$project" \
-    --objective "$objective" \
-    --runners "$runners" \
-    --continuous \
-    --interval-ms "$interval_ms" \
-    --max-failures "$max_failures" |
-  clojure -M -e '(println (:tamaki.loop/id (read)))'
-)"
+    --reason github-evolution-boundary
+else
+  loop_id="$(
+    bin/tamaki loop ensure \
+      --project "$project" \
+      --objective "$objective" \
+      --runners "$runners" \
+      --continuous \
+      --interval-ms "$interval_ms" \
+      --max-failures "$max_failures" |
+    clojure -M -e '(println (:tamaki.loop/id (read)))'
+  )"
+fi
 
 actor_pid=""
 cleanup() {
@@ -39,4 +49,8 @@ trap cleanup EXIT INT TERM
 ) &
 actor_pid=$!
 
-bin/tamaki loop run "$loop_id"
+if [[ "$self_evolution_mode" == "github" ]]; then
+  wait "$actor_pid"
+else
+  bin/tamaki loop run "$loop_id"
+fi
