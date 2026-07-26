@@ -105,12 +105,29 @@
        vec))
 
 (defn parse-issue-metadata [output]
-  (let [lines (str/split-lines (or output ""))
-        blockers (->> lines
+  (let [lines (->> (str/split-lines (or output ""))
+                   (map (fn [line]
+                          (if-let [[_ content]
+                                   (re-find #"^\s*│(.*)│\s*$" line)]
+                            (str/trim content)
+                            (str/trim line))))
+                   (remove #(and (not (str/blank? %))
+                                 (re-matches #"[╭╮╰╯├┤─\s]+" %)))
+                   vec)
+        paragraphs (->> lines
+                        (partition-by str/blank?)
+                        (remove #(str/blank? (first %)))
+                        (map #(str/join " " %))
+                        vec)
+        blockers (->> paragraphs
                       (keep #(second (re-find
                                       #"(?i)blocked by:\s*([0-9a-f]{7,40})" %)))
                       set)
-        criteria (->> lines
+        criteria (->> paragraphs
                       (keep #(second (re-find #"(?i)acceptance:\s*(.+)" %)))
                       vec)]
-    {:issue/blockers blockers :issue/criteria criteria}))
+    {:issue/blockers blockers
+     :issue/criteria criteria
+     :issue/managed? (boolean
+                      (some #(re-find #"(?i)managed by:\s*tamaki-supervisor" %)
+                            paragraphs))}))

@@ -59,7 +59,9 @@
       (let [recovered (loop/apply-event
                        failed
                        (loop/loop-event campaign kind 3 {}))]
-        (is (nil? (:tamaki.loop/last-error recovered)))))))
+        (is (nil? (:tamaki.loop/last-error recovered)))
+        (when (contains? #{:loop/cycle-integrated :loop/cycle-no-change} kind)
+          (is (zero? (:tamaki.loop/failures recovered))))))))
 
 (deftest completion-records-stop-reason-and-clears-in-flight-cycle
   (let [campaign (assoc (loop/campaign {:objective "operate safely"

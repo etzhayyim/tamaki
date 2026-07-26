@@ -199,7 +199,8 @@
                          (merge
                           {"KC_LOOP_ID" (:agent.run/id run)
                            "KC_SESSION" (:agent.run/id run)
-                           "KC_WORKER_ID" (:agent.run/worker leased)}
+                           "KC_WORKER_ID" (:agent.run/worker leased)
+                           "KC_REQUIRE_DONE_NO_EDIT" "1"}
                           (:env runner))
                          adapters/*activity-fn*
                          (fn [line]
@@ -666,20 +667,21 @@
                                                      (vals (runs))))
                            :open-issues (count existing)})
                 candidates
-                (mapv
-                 (fn [candidate]
-                   (let [shown (delivery/succeeded!
-                                (delivery/execute!
-                                 (delivery/issue-show-command
-                                  (:issue/id candidate))
-                                 project)
-                                "candidate issue inspection")
-                         metadata (intelligence/parse-issue-metadata
-                                   (:out shown))]
-                     (-> candidate
-                         (merge metadata)
-                         (update :issue/signals merge dynamics))))
-                 existing)
+                (->> existing
+                     (mapv
+                      (fn [candidate]
+                        (let [shown (delivery/succeeded!
+                                     (delivery/execute!
+                                      (delivery/issue-show-command
+                                       (:issue/id candidate))
+                                      project)
+                                     "candidate issue inspection")
+                              metadata (intelligence/parse-issue-metadata
+                                        (:out shown))]
+                          (-> candidate
+                              (merge metadata)
+                              (update :issue/signals merge dynamics)))))
+                     (filterv :issue/managed?))
                 selected (intelligence/selection candidates)
                 criteria (or (seq (get-in selected [:issue :issue/criteria]))
                              (intelligence/acceptance-criteria
@@ -689,7 +691,8 @@
                           (delivery/execute!
                            (delivery/issue-create-command
                             title
-                            (str (agent-loop/cycle-goal campaign cycle "<pending>")
+                            (str "Managed by: tamaki-supervisor\n\n"
+                                 (agent-loop/cycle-goal campaign cycle "<pending>")
                                  "\n\nAcceptance: "
                                  (str/join "\nAcceptance: " criteria)))
                            project)

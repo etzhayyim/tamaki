@@ -14,7 +14,7 @@
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/Users/junkawasaki/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>TAMAKI_SUPERVISOR_RUNNERS</key>
     <string>codex,claude,claude-zai,grok</string>
     <key>TAMAKI_SUPERVISOR_INTERVAL_MS</key>

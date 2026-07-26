@@ -38,9 +38,24 @@
 
 (deftest issue-metadata-extracts-blockers-and-criteria
   (is (= {:issue/blockers #{"abcdef1"}
-          :issue/criteria ["all suites green"]}
+          :issue/criteria ["all suites green across both runtimes"]
+          :issue/managed? true}
          (intelligence/parse-issue-metadata
-          "Blocked by: abcdef1\nAcceptance: all suites green\n"))))
+          (str "╭──────────────────────────────╮\n"
+               "│ Managed by: tamaki-supervisor │\n"
+               "│                               │\n"
+               "│ Blocked by: abcdef1           │\n"
+               "│ Acceptance: all suites green  │\n"
+               "│ across both runtimes          │\n"
+               "╰──────────────────────────────╯")))))
+
+(deftest unmanaged-issue-is-not-claimed-by-the-supervisor
+  (is (= {:issue/blockers #{}
+          :issue/criteria ["owner decides -- keep as-is"]
+          :issue/managed? false}
+         (intelligence/parse-issue-metadata
+          (str "│ Acceptance: owner decides -- │\n"
+               "│ keep as-is                    │")))))
 
 (deftest issue-list-parses-open-issues-and-ignores-chrome
   (let [output (str "╭───────────────────────────────────────────────────╮\n"

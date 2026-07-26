@@ -79,11 +79,13 @@
                                   (dissoc :tamaki.loop/current-cycle
                                           :tamaki.loop/last-error)
                                   (assoc :tamaki.loop/last-result :integrated
+                                         :tamaki.loop/failures 0
                                          :tamaki.loop/updated-at at))
       :loop/cycle-no-change (-> state
                                  (dissoc :tamaki.loop/current-cycle
                                          :tamaki.loop/last-error)
                                  (assoc :tamaki.loop/last-result :no-change
+                                        :tamaki.loop/failures 0
                                         :tamaki.loop/updated-at at))
       :loop/cycle-reviewed (-> state
                                (dissoc :tamaki.loop/current-cycle
