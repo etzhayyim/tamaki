@@ -140,6 +140,18 @@ conversion, then a follow-up. Missing observations remain
 rendering, tests, and publication manifests may run autonomously, while
 publishing remains `:approval-required` and deletion remains blocked.
 
+Verified accounting exports enter the same local event store:
+
+```sh
+bin/tamaki finance observe --file /path/to/private-runtime/accounting.edn
+```
+
+The EDN contains `:org`, `:period`, `:currency`, and optional `:pl`, `:bs`,
+and `:cf` maps. When all balance-sheet totals are supplied, Tamaki rejects an
+observation unless assets equal liabilities plus equity. Individual books and
+their values stay in the local runtime store; the public repository contains
+only this generic contract.
+
 `nodes` and `tick` delegate to `kotoba-fleet`; `infer` and `murakumo` delegate
 to the existing Murakumo operators. Their remaining arguments pass through
 unchanged, so Tamaki stays one operator entry point without forking those

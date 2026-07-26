@@ -9,6 +9,7 @@
             [kotoba.tamaki.content-test]
             [kotoba.tamaki.delivery-test]
             [kotoba.tamaki.evolution-test]
+            [kotoba.tamaki.finance-test]
             [kotoba.tamaki.loop-test]
             [kotoba.tamaki.loop-registry-test]
             [kotoba.tamaki.mail-test]
@@ -36,6 +37,7 @@
                                'kotoba.tamaki.content-test
                                'kotoba.tamaki.delivery-test
                                'kotoba.tamaki.evolution-test
+                               'kotoba.tamaki.finance-test
                                'kotoba.tamaki.loop-test
                                'kotoba.tamaki.loop-registry-test
                                'kotoba.tamaki.mail-test

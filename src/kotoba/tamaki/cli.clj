@@ -11,6 +11,7 @@
             [kotoba.tamaki.content :as content]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
+            [kotoba.tamaki.finance :as finance]
             [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.loop-registry :as loop-registry]
             [kotoba.tamaki.lineage :as lineage]
@@ -53,6 +54,7 @@
        "  tamaki content observe --file REACTION.edn\n"
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
        "  tamaki content status --id CONTENT-ID\n"
+       "  tamaki finance observe --file ACCOUNTING.edn\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
@@ -198,6 +200,22 @@
       0)
 
     (throw (ex-info "Usage: tamaki content plan|observe|status ..." {}))))
+
+(defn finance!
+  [{:keys [positional options]}]
+  (case (first positional)
+    "observe"
+    (let [path (:file options)]
+      (when (str/blank? path)
+        (throw (ex-info "finance observe requires --file ACCOUNTING.edn" {})))
+      (let [observation (edn/read-string (slurp (io/file path)))
+            event (finance/event observation (now))]
+        (store/append-event! (store/default-root) event)
+        (print-edn {:finance/status :observed
+                    :finance/org (:org observation)
+                    :finance/period (:period observation)})
+        0))
+    (throw (ex-info "Usage: tamaki finance observe --file ACCOUNTING.edn" {}))))
 
 (declare execute-run! submit! require-run!)
 
@@ -1790,6 +1808,7 @@
       "actor" (actor! parsed)
       "kpi" (kpi! parsed)
       "content" (content! parsed)
+      "finance" (finance! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
