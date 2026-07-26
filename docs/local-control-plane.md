@@ -4,14 +4,15 @@ Tamaki is a public application. Concrete organizations, repositories, domains,
 objectives, actors, loops, budgets, and account references are runtime data and
 must not be committed to this repository.
 
-By default the CLI reads private configuration from:
+The resident domain supervisor reads private configuration from:
 
 ```text
-<state-dir>/control
+<workspace>/projects/.tamaki/tamaki-control
 ```
 
-where the state directory is `TAMAKI_STATE_DIR` or `.tamaki`. Set
-`TAMAKI_CONTROL_ROOT` to keep the control repository elsewhere.
+Set `TAMAKI_WORKSPACE` and optionally `TAMAKI_CONTROL_ROOT` to override it.
+Runtime events are separate at
+`<workspace>/projects/.tamaki/tamaki-state` (`TAMAKI_STATE_DIR`).
 
 The control directory may be an independent private Git repository:
 
@@ -33,4 +34,3 @@ The public runtime fails closed when a private actor declares Radicle
 publication. A local control repository can select GitHub private as the
 primary issue and delivery authority without exposing its configuration in the
 Tamaki source tree.
-

@@ -51,14 +51,19 @@
     (when-not (.isFile file)
       (throw (ex-info "ActorSpec file not found" {:path path})))
     (let [spec (edn/read-string (slurp file))
-          project (:actor/project spec)]
+          project (:actor/project spec)
+          targets (:actor/business-targets spec)
+          parent (.getParentFile (.getCanonicalFile file))]
       ;; Actor specs are often portable and use ".". Resolve it at the
       ;; operator boundary so worktree naming never creates a child checkout
       ;; inside the canonical repository.
       (validate-spec
        (cond-> spec
          project (assoc :actor/project
-                        (.getCanonicalPath (io/file project))))))))
+                        (.getCanonicalPath (io/file project)))
+         targets (assoc :actor/business-targets
+                        (.getCanonicalPath
+                         (io/file parent targets))))))))
 
 (defn runner-pool [spec]
   (let [runners (:actor/runners spec)

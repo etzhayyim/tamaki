@@ -41,6 +41,18 @@
     (is (= (.getCanonicalPath (io/file "."))
            (:actor/project (actor/read-spec (.getPath file)))))))
 
+(deftest business-targets-are-relative-to-the-private-spec
+  (let [dir (.toFile
+             (java.nio.file.Files/createTempDirectory
+              "tamaki-actor-targets-" (make-array java.nio.file.attribute.FileAttribute 0)))
+        file (io/file dir "actor.edn")]
+    (spit file (pr-str (assoc spec
+                              :actor/project "."
+                              :actor/business-targets "../targets.edn")))
+    (is (= (.getCanonicalPath (io/file dir "../targets.edn"))
+           (:actor/business-targets
+            (actor/read-spec (.getPath file)))))))
+
 (deftest reconcile-plan-scales-to-desired-state
   (let [run-0 (actor/replica-run spec 0 1)
         run-1 (assoc (actor/replica-run spec 1 2)

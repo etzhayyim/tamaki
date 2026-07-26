@@ -18,6 +18,7 @@
             [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.store :as store]
             [kotoba.tamaki.supervisor :as supervisor]
+            [kotoba.tamaki.telemetry :as telemetry]
             [kotoba.tamaki.visual :as visual])
   (:gen-class))
 
@@ -46,6 +47,7 @@
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
        "  tamaki kpi status [--targets FILE]\n"
        "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
+       "  tamaki kpi collect --spec COLLECTOR.edn [--targets FILE]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
@@ -105,7 +107,8 @@
 
 (defn business-summary
   ([] (business-summary {}))
-  ([options] (business/summary (events) (business-targets options))))
+  ([options] (business/summary (events) (business-targets options)
+                               (:domain options))))
 
 (defn kpi!
   [{:keys [positional options]}]
@@ -123,7 +126,23 @@
         (print-edn (business-summary options))
         0))
 
-    (throw (ex-info "Usage: tamaki kpi status|observe ..." {}))))
+    "collect"
+    (let [path (:spec options)]
+      (when (str/blank? path)
+        (throw (ex-info "kpi collect requires --spec COLLECTOR.edn" {})))
+      (let [spec (telemetry/read-spec path)
+            result (telemetry/collect spec (now))
+            observation (:observation result)
+            event (business/event observation (now))]
+        (store/append-event! (store/default-root) event)
+        (print-edn
+         (assoc result :business
+                (business/summary (events)
+                                  (business-targets options)
+                                  (:collector/domain result))))
+        (if (:collector/fresh? result) 0 1)))
+
+    (throw (ex-info "Usage: tamaki kpi status|observe|collect ..." {}))))
 
 (declare execute-run! submit! require-run!)
 
@@ -150,7 +169,10 @@
     (submit! (assoc parsed :positional [goal]))))
 
 (defn actor-status [spec]
-  (let [summary (business-summary)
+  (let [summary (business-summary
+                 (cond-> {:domain (:actor/business-domain spec)}
+                   (:actor/business-targets spec)
+                   (assoc :targets (:actor/business-targets spec))))
         control (business/control-signals summary)
         controlled (assoc spec :actor/control-pressure
                           (if (= :observed (:business/status summary))

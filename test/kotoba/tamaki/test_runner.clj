@@ -19,6 +19,7 @@
             [kotoba.tamaki.result-test]
             [kotoba.tamaki.store-test]
             [kotoba.tamaki.supervisor-test]
+            [kotoba.tamaki.telemetry-test]
             [kotoba.tamaki.visual-test]
             [kotoba.tamaki.visibility-test])
   (:gen-class))
@@ -43,6 +44,7 @@
                                'kotoba.tamaki.result-test
                                'kotoba.tamaki.store-test
                                'kotoba.tamaki.supervisor-test
+                               'kotoba.tamaki.telemetry-test
                                'kotoba.tamaki.visual-test
                                'kotoba.tamaki.visibility-test)]
     (when (pos? (+ (:fail result) (:error result)))

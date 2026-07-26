@@ -3,10 +3,14 @@ set -euo pipefail
 
 tamaki_root="$(cd "$(dirname "$0")/.." && pwd)"
 interval_seconds="${TAMAKI_DOMAIN_INTERVAL_SECONDS:-300}"
-control_root="${TAMAKI_CONTROL_ROOT:-$tamaki_root/.tamaki/control}"
+workspace_root="${TAMAKI_WORKSPACE:-${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/../../.." && pwd)}}"
+control_root="${TAMAKI_CONTROL_ROOT:-$workspace_root/projects/.tamaki/tamaki-control}"
 actor_dir="${TAMAKI_ACTOR_SPEC_DIR:-$control_root/actors}"
+collector_dir="${TAMAKI_COLLECTOR_SPEC_DIR:-$control_root/collectors}"
 concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-3}"
 cd "$tamaki_root"
+export TAMAKI_WORKSPACE="$workspace_root"
+export TAMAKI_STATE_DIR="${TAMAKI_STATE_DIR:-$workspace_root/projects/.tamaki/tamaki-state}"
 
 if [[ ! -d "$actor_dir" ]]; then
   echo "Tamaki control actor directory not found: $actor_dir" >&2
@@ -31,6 +35,13 @@ while true; do
   (( batch > count )) && batch="$count"
   for ((offset=0; offset<batch; offset++)); do
     spec="${specs[$(((index + offset) % count))]}"
+    collector="$collector_dir/$(basename "$spec")"
+    if [[ -f "$collector" ]]; then
+      # A stale or unavailable provider must not stop code/reliability work.
+      # `kpi collect` records zero confidence and exits non-zero when stale.
+      bin/tamaki kpi collect --spec "$collector" \
+        --targets "$control_root/business-targets.edn" || true
+    fi
     bin/tamaki actor reconcile "$spec" --execute &
     pids+=("$!")
   done

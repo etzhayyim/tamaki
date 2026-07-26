@@ -4,7 +4,7 @@
             [clojure.java.io :as io]))
 
 (def stock-keys
-  [:traffic :qualified-leads :conversations :proposals
+  [:traffic :unique-visitors :qualified-leads :conversations :proposals
    :won-customers :active-customers :mrr-jpy :cash-jpy])
 
 (def flow-keys
@@ -70,12 +70,18 @@
       (throw (ex-info "Business targets must be an EDN map" {:path path})))
     targets))
 
-(defn latest-observation [events]
-  (some->> events
+(defn latest-observation
+  ([events] (latest-observation events nil))
+  ([events domain]
+   (some->> events
            (filter #(= :business/observed (:tamaki.event/kind %)))
+           (filter #(or (nil? domain)
+                        (= domain
+                           (get-in % [:tamaki.event/data :observation
+                                      :domain]))))
            (sort-by :tamaki.event/at)
            last :tamaki.event/data :observation
-           normalize-observation))
+           normalize-observation)))
 
 (defn recent-observations [events]
   (->> events
@@ -89,8 +95,17 @@
     (clamp (/ (double (or actual 0)) (double target)))
     0.0))
 
-(defn summary [events targets]
-  (if-let [observation (latest-observation events)]
+(defn summary
+  ([events targets] (summary events targets nil))
+  ([events targets domain]
+  (if-let [observation (latest-observation events domain)]
+    (if (false? (:fresh? observation))
+      {:business/status :stale
+       :business/observation observation
+       :business/kpis {}
+       :business/progress {}
+       :business/control-score 0.0
+       :business/targets targets}
     (let [{:keys [stocks flows period-days]} observation
           rates (derived-rates observation)
           weeks (/ period-days 7.0)
@@ -99,7 +114,11 @@
           (ratio (:agent-cost-jpy flows) (:accepted-patches flows))
           risk-adjusted (risk-adjusted-delta-mrr
                          (assoc observation :rates rates))
-          kpis {:mrr-jpy (:mrr-jpy stocks)
+          kpis {:traffic (:traffic stocks)
+                :unique-visitors (:unique-visitors stocks)
+                :active-customers (:active-customers stocks)
+                :revenue-jpy (:revenue-jpy flows)
+                :mrr-jpy (:mrr-jpy stocks)
                 :risk-adjusted-delta-mrr-jpy risk-adjusted
                 :qualified-leads (:qualified-leads stocks)
                 :activation-rate (:activation-rate rates)
@@ -133,12 +152,12 @@
        :business/progress progress
        :business/control-score
        (/ (reduce + (vals progress)) (double (count progress)))
-       :business/targets targets})
+       :business/targets targets}))
     {:business/status :unobserved
      :business/kpis {}
      :business/progress {}
      :business/control-score 0.0
-     :business/targets targets}))
+     :business/targets targets})))
 
 (defn control-signals [business-summary]
   (if (= :observed (:business/status business-summary))
