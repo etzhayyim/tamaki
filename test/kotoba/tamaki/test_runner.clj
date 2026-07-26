@@ -8,6 +8,7 @@
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.runners-test]
             [kotoba.tamaki.store-test]
+            [kotoba.tamaki.supervisor-test]
             [kotoba.tamaki.visual-test])
   (:gen-class))
 
@@ -20,6 +21,7 @@
                                'kotoba.tamaki.intelligence-test
                                'kotoba.tamaki.runners-test
                                'kotoba.tamaki.store-test
+                               'kotoba.tamaki.supervisor-test
                                'kotoba.tamaki.visual-test)]
     (when (pos? (+ (:fail result) (:error result)))
       (throw (ex-info "Tamaki tests failed" result)))

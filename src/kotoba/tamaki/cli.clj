@@ -10,6 +10,7 @@
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.store :as store]
+            [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.visual :as visual])
   (:gen-class))
 
@@ -32,6 +33,8 @@
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
        "  tamaki loop start|status|tick|run ...\n"
+       "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --voice]\n"
+       "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -55,7 +58,7 @@
       :else
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
-          (if (contains? #{"--execute" "--approve" "--auto-approve"
+          (if (contains? #{"--execute" "--approve" "--auto-approve" "--voice"
                            "--continuous"} x)
             (recur (rest xs) positional
                    (assoc options (keyword (subs x 2)) true))
@@ -74,7 +77,27 @@
 (defn print-edn [x]
   (pprint/pprint x))
 
-(declare execute-run!)
+(declare execute-run! submit!)
+
+(defn consult!
+  [{:keys [positional options]}]
+  (let [summary (str/join " " positional)]
+    (when (str/blank? summary)
+      (throw (ex-info "Consultation summary is required" {})))
+    (print-edn
+     (supervisor/consult!
+      {:title (:title options)
+       :summary summary
+       :action (or (:action options) "Continue the agent loop")
+       :impact (:impact options)
+       :voice? (:voice options)}))
+    0))
+
+(defn voice!
+  [{:keys [positional] :as parsed}]
+  (let [transcript (str/join " " positional)
+        goal (supervisor/voice-intent transcript)]
+    (submit! (assoc parsed :positional [goal]))))
 
 (defn submit!
   [{:keys [positional options]}]
@@ -875,6 +898,8 @@
       "review" (review! parsed)
       "integrate" (integrate! parsed)
       "loop" (loop! parsed)
+      "consult" (consult! parsed)
+      "voice" (or (voice! parsed) 0)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

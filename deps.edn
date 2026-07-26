@@ -1,5 +1,6 @@
 {:paths ["src"]
- :deps {cheshire/cheshire {:mvn/version "5.13.0"}}
+ :deps {cheshire/cheshire {:mvn/version "5.13.0"}
+        kotoba-lang/hil {:local/root "../hil"}}
  :aliases
  {:run {:main-opts ["-m" "kotoba.tamaki.cli"]}
   :test {:extra-paths ["test"]
