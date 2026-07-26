@@ -11,6 +11,9 @@
    1))
 
 (deftest lifecycle-is-ordered-and-fail-closed
+  (is (= :radicle (:evolution/authority proposed)))
+  (is (evolution/radicle-id? (:evolution/issue proposed)))
+  (is (false? (evolution/radicle-id? "4")))
   (is (= :implemented
          (:evolution/status
           (evolution/transition proposed :implemented 2 {}))))
