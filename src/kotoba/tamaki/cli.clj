@@ -88,7 +88,9 @@
   (pprint/pprint x))
 
 (defn default-business-targets-path []
-  (.getAbsolutePath (io/file "actors" "revenue-targets.edn")))
+  (let [private (io/file "actors" "revenue-targets.edn")
+        example (io/file "examples" "revenue-targets.example.edn")]
+    (.getAbsolutePath (if (.isFile private) private example))))
 
 (defn business-targets [options]
   (business/read-targets

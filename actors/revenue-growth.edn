@@ -1,6 +1,6 @@
 {:actor/id :revenue/growth-supervisor
  :actor/type :cloud-itonami/isic-portfolio
- :actor/project "/Users/junkawasaki/github/com-junkawasaki/orgs/kotoba-lang/tamaki"
+ :actor/project "."
  :actor/objective "Increase sustainable revenue by resolving the highest-leverage unblocked issue across governed business actors."
  :actor/capabilities #{:radicle :issue-triage :implementation :review :visual}
  :actor/governor :tamaki/revenue-governor

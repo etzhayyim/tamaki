@@ -7,14 +7,14 @@
   <string>dev.kotoba.tamaki.supervisor</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/junkawasaki/github/com-junkawasaki/orgs/kotoba-lang/tamaki/bin/tamaki-supervisor</string>
+    <string>/ABSOLUTE/PATH/TO/tamaki/bin/tamaki-supervisor</string>
   </array>
   <key>WorkingDirectory</key>
-  <string>/Users/junkawasaki/github/com-junkawasaki/orgs/kotoba-lang/tamaki</string>
+  <string>/ABSOLUTE/PATH/TO/tamaki</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/junkawasaki/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>TAMAKI_SUPERVISOR_RUNNERS</key>
     <string>codex,claude,claude-zai,grok</string>
     <key>TAMAKI_SUPERVISOR_INTERVAL_MS</key>
@@ -29,8 +29,8 @@
   <key>ThrottleInterval</key>
   <integer>30</integer>
   <key>StandardOutPath</key>
-  <string>/Users/junkawasaki/github/com-junkawasaki/orgs/kotoba-lang/tamaki/.tamaki/supervisor.log</string>
+  <string>/ABSOLUTE/PATH/TO/tamaki/.tamaki/supervisor.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/junkawasaki/github/com-junkawasaki/orgs/kotoba-lang/tamaki/.tamaki/supervisor.log</string>
+  <string>/ABSOLUTE/PATH/TO/tamaki/.tamaki/supervisor.log</string>
 </dict>
 </plist>

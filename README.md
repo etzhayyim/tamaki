@@ -186,10 +186,12 @@ before/after operational signal so later cycles can respond to the feedback.
 ## Revenue control plane
 
 Tamaki treats commercial outcomes as durable facts rather than agent prose.
-Targets live in `actors/revenue-targets.edn`; record a periodic observation
+Private targets live in the gitignored `actors/revenue-targets.edn`; initialize
+it from the illustrative public template, then record a periodic observation
 from an approved analytics or accounting export:
 
 ```sh
+cp examples/revenue-targets.example.edn actors/revenue-targets.edn
 cp examples/revenue-observation.edn /tmp/revenue-week.edn
 # Fill the stocks, period flows, costs, and confidence with observed values.
 bin/tamaki kpi observe --file /tmp/revenue-week.edn

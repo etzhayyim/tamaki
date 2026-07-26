@@ -1,6 +1,7 @@
 {:target/window-days 30
- ;; Bootstrap control targets. Replace these with the portfolio's approved
- ;; commercial plan; Tamaki treats missing observations as unknown, not zero.
+ ;; Illustrative bootstrap values only. Copy this file to the gitignored
+ ;; actors/revenue-targets.edn and replace every value with the private,
+ ;; approved commercial plan for the local deployment.
  :target/mrr-jpy 1000000
  :target/risk-adjusted-delta-mrr-jpy 100000
  :target/qualified-leads 40
