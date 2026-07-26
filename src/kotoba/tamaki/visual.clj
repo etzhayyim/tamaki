@@ -3,8 +3,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [kotoba.tamaki.delivery :as delivery])
-  (:import [java.util.concurrent TimeUnit]
-           [javax.imageio ImageIO]))
+  (:import [java.util.concurrent TimeUnit]))
 
 (def window-query
   (str "import CoreGraphics; import Foundation; "
@@ -21,6 +20,32 @@
        "try VNImageRequestHandler(url:u).perform([r]); "
        "for x in (r.results ?? []) { "
        "if let c=try? x.topCandidates(1).first { print(c.string) } }"))
+
+(def metrics-script
+  (str "import Foundation; import CoreGraphics; import ImageIO; "
+       "let u=URL(fileURLWithPath:CommandLine.arguments[1]) as CFURL; "
+       "guard let s=CGImageSourceCreateWithURL(u,nil), "
+       "let im=CGImageSourceCreateImageAtIndex(s,0,nil) else { exit(2) }; "
+       "let w=im.width, h=im.height, row=w*4; "
+       "var p=[UInt8](repeating:0,count:row*h); "
+       "let cs=CGColorSpaceCreateDeviceRGB(); "
+       "guard let c=CGContext(data:&p,width:w,height:h,bitsPerComponent:8,"
+       "bytesPerRow:row,space:cs,"
+       "bitmapInfo:CGImageAlphaInfo.premultipliedLast.rawValue) else { exit(3) }; "
+       "c.draw(im,in:CGRect(x:0,y:0,width:w,height:h)); "
+       "let x0=Int(Double(w)*0.08), x1=Int(Double(w)*0.72); "
+       "let y0=Int(Double(h)*0.23), y1=Int(Double(h)*0.88); "
+       "var n=0, sum=0.0, sum2=0.0, colored=0; "
+       "for y in stride(from:y0,to:y1,by:8) { "
+       "for x in stride(from:x0,to:x1,by:8) { let i=y*row+x*4; "
+       "let r=Double(p[i]), g=Double(p[i+1]), b=Double(p[i+2]); "
+       "let l=(299*r+587*g+114*b)/1000.0; "
+       "sum += l; sum2 += l*l; n += 1; "
+       "if max(r,g,b)-min(r,g,b) > 18 { colored += 1 } } }; "
+       "let mean=sum/Double(max(1,n)); "
+       "let variance=max(0,sum2/Double(max(1,n))-mean*mean); "
+       "print(\"\\(w) \\(h) \\(mean) \\(sqrt(variance)) "
+       "\\(Double(colored)/Double(max(1,n)))\")"))
 
 (defn- execute-with-timeout [argv cwd timeout-seconds]
   (let [process (.start (doto (ProcessBuilder. ^java.util.List argv)
@@ -71,39 +96,28 @@
           {:visual/status :unavailable
            :visual/error (str/trim (str (:err captured)))})))))
 
-(defn- canvas-metrics [path]
-  (let [image (ImageIO/read (io/file path))
-        width (.getWidth image)
-        height (.getHeight image)
-        x0 (int (* width 0.08))
-        x1 (int (* width 0.72))
-        y0 (int (* height 0.23))
-        y1 (int (* height 0.88))
-        values (for [y (range y0 y1 8)
-                     x (range x0 x1 8)
-                     :let [rgb (.getRGB image x y)
-                           r (bit-and 255 (bit-shift-right rgb 16))
-                           g (bit-and 255 (bit-shift-right rgb 8))
-                           b (bit-and 255 rgb)]]
-                 {:luma (/ (+ (* 299 r) (* 587 g) (* 114 b)) 1000.0)
-                  :spread (- (max r g b) (min r g b))})
-        n (max 1 (count values))
-        mean (/ (reduce + (map :luma values)) n)
-        variance (/ (reduce + (map #(let [d (- (:luma %) mean)] (* d d))
-                                   values))
-                    n)]
-    {:canvas/luma mean
-     :canvas/stddev (Math/sqrt variance)
-     :canvas/color-ratio (/ (count (filter #(> (:spread %) 18) values))
-                            (double n))
-     :image/width width
-     :image/height height}))
+(defn- canvas-metrics [project path]
+  (let [result (execute-with-timeout
+                ["swift" "-e" metrics-script path] project 20)]
+    (when-not (zero? (:exit result))
+      (throw (ex-info "CoreGraphics screenshot analysis failed"
+                      {:exit (:exit result) :error (:err result)})))
+    (let [[width height mean stddev color-ratio]
+          (str/split (str/trim (:out result)) #"\s+")]
+      (when-not color-ratio
+        (throw (ex-info "Unexpected screenshot metrics output"
+                        {:output (:out result)})))
+      {:canvas/luma (Double/parseDouble mean)
+       :canvas/stddev (Double/parseDouble stddev)
+       :canvas/color-ratio (Double/parseDouble color-ratio)
+       :image/width (Long/parseLong width)
+       :image/height (Long/parseLong height)})))
 
 (defn analyze! [project capture]
   (if-not (= :captured (:visual/status capture))
     capture
     (try
-      (let [metrics (canvas-metrics (:visual/path capture))
+      (let [metrics (canvas-metrics project (:visual/path capture))
             ocr (execute-with-timeout
                  ["swift" "-e" ocr-script (:visual/path capture)]
                  project 20)
