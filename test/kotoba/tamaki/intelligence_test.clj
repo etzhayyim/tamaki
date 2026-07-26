@@ -98,3 +98,22 @@
              :review/evidence ["criterion failed"]}
             "abc")))
   (is (not (intelligence/valid-review-verdict? nil "abc"))))
+
+(deftest dynamics-signals-translate-operational-pressure-into-normalized-scores
+  (is (= {:feedback-pressure 0.25 :wip-pressure 0.5 :urgency 0.5}
+         (intelligence/dynamics-signals
+          {:failures 1 :max-failures 4 :active-runs 2 :open-issues 5})))
+  (is (= {:feedback-pressure 0.0 :wip-pressure 0.0 :urgency 0.0}
+         (intelligence/dynamics-signals
+          {:failures 0 :max-failures 3 :active-runs 0 :open-issues 0}))))
+
+(deftest dynamics-signals-clamp-out-of-range-pressure-to-the-unit-interval
+  (is (= {:feedback-pressure 1.0 :wip-pressure 1.0 :urgency 1.0}
+         (intelligence/dynamics-signals
+          {:failures 10 :max-failures 2 :active-runs 40 :open-issues 100}))))
+
+(deftest dynamics-signals-guard-against-a-zero-max-failures-denominator
+  (is (= 1.0
+         (:feedback-pressure
+          (intelligence/dynamics-signals
+           {:failures 3 :max-failures 0 :active-runs 0 :open-issues 0})))))
