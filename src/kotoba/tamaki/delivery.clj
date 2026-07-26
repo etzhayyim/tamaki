@@ -50,10 +50,16 @@
   ["rad" "issue" "state" "--no-announce" "--closed" issue-id])
 
 (defn git-status-command [] ["git" "status" "--porcelain"])
+(defn porcelain-path [line]
+  (let [path (subs line (min 3 (count line)))]
+    (if-let [[_ destination] (re-matches #".* -> (.+)" path)]
+      destination
+      path)))
+
 (defn porcelain-paths [output]
   (->> (str/split-lines (or output ""))
        (remove str/blank?)
-       (mapv #(subs % (min 3 (count %))))))
+       (mapv porcelain-path)))
 
 (defn git-add-command [paths] (into ["git" "add" "--"] paths))
 (defn git-commit-command [message] ["git" "commit" "-m" message])
