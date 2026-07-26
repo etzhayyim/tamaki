@@ -1,0 +1,25 @@
+{:organism/id :tamaki/com-junkawasaki
+ :organism/org :com-junkawasaki
+ :organism/objective
+ "Support personal research, making, learning, digital stewardship, and continuity while preserving privacy, human agency, relationships, and future optionality."
+ :organism/responsibilities
+ #{:personal-research :making :learning :digital-stewardship
+   :personal-continuity :privacy}
+ :organism/repos ["orgs/com-junkawasaki/*"]
+ :organism/state-root-env "TAMAKI_COM_JUNKAWASAKI_STATE_ROOT"
+ :organism/actors-dir "organisms/com-junkawasaki/actors"
+ :organism/loops-dir "organisms/com-junkawasaki/loops"
+ :organism/governor :com-junkawasaki/personal-agency-and-privacy
+ :organism/budget {:agent-concurrency 3 :token-budget-period :day}
+ :organism/authority
+ {:observe :autonomous
+  :issue-create :autonomous
+  :sandbox-experiment :autonomous
+  :patch-create :autonomous
+  :integrate :approval-required
+  :private-data-access :approval-required
+  :personal-contact :voice-required
+  :publish :voice-required
+  :credential-access :approval-required
+  :payment :voice-required
+  :cross-org-delegation :blocked}}

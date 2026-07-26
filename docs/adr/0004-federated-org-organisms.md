@@ -22,6 +22,7 @@ or transfer credentials across organizations.
 
 ```text
 Tamaki kernel
+├── tamaki/com-junkawasaki
 ├── tamaki/etzhayyim
 ├── tamaki/cloud-itonami
 ├── tamaki/jk-luxury
@@ -58,6 +59,15 @@ Religious activity and relational wellbecoming. It preserves meme and lineage
 without treating people as optimization targets. Doctrine, publication,
 personal communication, and succession require human participation.
 
+### com-junkawasaki
+
+Personal research, making, learning, digital stewardship, and continuity.
+Privacy, human agency, relationships, and future optionality take precedence
+over throughput. Personal communication, publication, private-data access,
+credentials, payments, and cross-organization delegation are strongly gated.
+This organism cannot silently act as the owner or authority of another
+organization.
+
 ### cloud-itonami
 
 Sustainable business activity around network-awai. It may autonomously observe,
@@ -83,4 +93,3 @@ An organism can fail, expire, or be pruned without taking authority over its
 siblings. Shared learning remains possible through explicit artifacts and
 meme inheritance. The observatory presents one garden with separate groves,
 and every activity retains an organism identity.
-
