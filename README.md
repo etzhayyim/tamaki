@@ -427,3 +427,30 @@ promotion requirement.
 The resident supervisor defaults to `TAMAKI_SELF_EVOLUTION_MODE=radicle`.
 Setting it to `github` is an explicit fallback that retires active Radicle
 campaigns; it is not the normal operating mode.
+
+### Canonical issue topology
+
+Issue dependencies live in a repository-owned EDN roadmap, not in forge issue
+prose. Existing Radicle and GitHub issues can be imported once (or explicitly
+reconciled), after which EDN is authoritative:
+
+```sh
+tamaki topology import \
+  --file roadmaps/itonami-kaikei.edn \
+  --project . --execute
+
+tamaki topology project \
+  --file roadmaps/itonami-kaikei.edn \
+  --project .            # preview
+
+tamaki topology project \
+  --file roadmaps/itonami-kaikei.edn \
+  --project . --execute  # EDN -> Radicle
+```
+
+Import matches by forge ID, then exact title, preserves canonical blocker
+edges, and records forge provenance under `:issue/projections`. Projection
+reconciles title, description, state, and Tamaki-managed labels. Human labels
+are preserved. Every executed import/project writes a receipt to Tamaki's
+private event store. Actors with `:topology-sync` run the projector at their
+reconciliation boundary.

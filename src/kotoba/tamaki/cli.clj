@@ -21,6 +21,7 @@
             [kotoba.tamaki.store :as store]
             [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.telemetry :as telemetry]
+            [kotoba.tamaki.topology-projection :as topology-projection]
             [kotoba.tamaki.visual :as visual])
   (:gen-class))
 
@@ -55,6 +56,7 @@
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
        "  tamaki content status --id CONTENT-ID\n"
        "  tamaki finance observe --file ACCOUNTING.edn\n"
+       "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
@@ -217,6 +219,84 @@
         0))
     (throw (ex-info "Usage: tamaki finance observe --file ACCOUNTING.edn" {}))))
 
+(defn- topology-receipt! [kind data]
+  (store/append-event!
+   (store/default-root)
+   {:tamaki.event/version 1
+    :tamaki.event/id (str (random-uuid))
+    :tamaki.event/run "topology::edn-forge"
+    :tamaki.event/parent nil
+    :tamaki.event/kind kind
+    :tamaki.event/at (now)
+    :tamaki.event/data data}))
+
+(defn topology!
+  [{:keys [positional options]}]
+  (let [action (first positional)
+        path (:file options)
+        project (or (:project options) (.getAbsolutePath (io/file ".")))]
+    (when (str/blank? path)
+      (throw (ex-info "topology requires --file ROADMAP.edn" {})))
+    (let [topology (topology-projection/read-topology path)
+          rid (:topology/radicle-repo topology)
+          github-repo (or (:github-repo options)
+                          (:topology/github-repo topology))]
+      (case action
+        "import"
+        (let [radicle (if (str/blank? rid)
+                        []
+                        (topology-projection/fetch-radicle rid project))
+              github (topology-projection/fetch-github github-repo project)
+              result (topology-projection/import-plan
+                      topology radicle github)
+              summary (dissoc result :topology)]
+          (when (:execute options)
+            (topology-projection/write-topology! path (:topology result))
+            (topology-receipt!
+             :topology/imported
+             (assoc summary :topology/file (.getCanonicalPath (io/file path))
+                    :topology/radicle-repo rid
+                    :topology/github-repo github-repo)))
+          (print-edn
+           (assoc summary
+                  :topology/file (.getCanonicalPath (io/file path))
+                  :topology/dry-run (not (:execute options))))
+          0)
+
+        "project"
+        (do
+          (when (str/blank? rid)
+            (throw (ex-info
+                    "Radicle projection requires :topology/radicle-repo"
+                    {:file path})))
+          (let [observed (topology-projection/fetch-radicle rid project)
+                plan (topology-projection/radicle-plan topology observed)
+                results (when (:execute options)
+                          (topology-projection/apply-plan! plan project))
+                ok? (or (not (:execute options))
+                        (every? :ok? results))
+                receipt {:topology/file (.getCanonicalPath (io/file path))
+                         :topology/radicle-repo rid
+                         :projection/operations (count plan)
+                         :projection/ok? ok?}]
+            (when (:execute options)
+              (topology-receipt!
+               :topology/projected
+               (assoc receipt
+                      :projection/results
+                      (mapv #(dissoc % :command) results))))
+            (print-edn
+             (cond-> (assoc receipt
+                            :topology/dry-run (not (:execute options))
+                            :projection/plan plan)
+               results (assoc :projection/results results)))
+            (if ok? 0 1)))
+
+        (throw
+         (ex-info
+          "Usage: tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]"
+          {}))))))
+
 (declare execute-run! submit! require-run!)
 
 (defn consult!
@@ -240,6 +320,35 @@
   (let [transcript (str/join " " positional)
         goal (supervisor/voice-intent transcript)]
     (submit! (assoc parsed :positional [goal]))))
+
+(defn reconcile-actor-topology!
+  "Run the EDN→Radicle projection at the actor reconciliation boundary."
+  [spec execute?]
+  (when (and (:actor/issue-topology-file spec)
+             (contains? (set (:actor/capabilities spec)) :topology-sync))
+    (let [path (:actor/issue-topology-file spec)
+          topology (topology-projection/read-topology path)
+          rid (:topology/radicle-repo topology)
+          observed (topology-projection/fetch-radicle
+                    rid (:actor/project spec))
+          plan (topology-projection/radicle-plan topology observed)
+          results (when execute?
+                    (topology-projection/apply-plan!
+                     plan (:actor/project spec)))
+          summary {:topology/file path
+                   :projection/operations (count plan)
+                   :projection/dry-run (not execute?)
+                   :projection/ok?
+                   (or (not execute?) (every? :ok? results))}]
+      (when execute?
+        (topology-receipt!
+         :topology/projected
+         (assoc summary :actor/id (:actor/id spec)
+                :projection/results
+                (mapv #(dissoc % :command) results))))
+      (cond-> summary
+        (not execute?) (assoc :projection/plan plan)
+        results (assoc :projection/results results)))))
 
 (defn actor-status [spec]
   (let [summary (business-summary
@@ -266,6 +375,7 @@
                                              :next-action]))
                        ". Use this evidence when selecting the next issue.")
                spec)
+        topology-sync (reconcile-actor-topology! spec execute?)
         before (actor-status spec)
         existing-count (count (actor/actor-runs spec
                                                 (remove nil? (vals (runs)))))
@@ -329,7 +439,8 @@
                               % [:agent.run/id :agent.run/replica
                                  :agent.run/runner :agent.run/model])
                             spawned))
-         results (assoc :results results)))
+         results (assoc :results results)
+         topology-sync (assoc :topology-sync topology-sync)))
       (if (and results (some #(not (zero? (:exit %))) results)) 1 0))))
 
 (defn actor!
@@ -1809,6 +1920,7 @@
       "kpi" (kpi! parsed)
       "content" (content! parsed)
       "finance" (finance! parsed)
+      "topology" (topology! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
