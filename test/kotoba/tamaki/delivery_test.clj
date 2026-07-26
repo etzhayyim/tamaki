@@ -26,13 +26,17 @@
          (delivery/porcelain-paths
           " M src/a.clj\nM  test/b.clj\n?? new.clj\n"))))
 
-(deftest porcelain-paths-use-rename-and-copy-destinations
-  (testing "renames expose the path that remains in the working tree"
-    (is (= ["src/new.clj"]
+(deftest porcelain-paths-use-both-rename-and-copy-paths
+  (testing "renames expose both paths so an allowlist cannot hide a deletion"
+    (is (= ["src/old.clj" "src/new.clj"]
            (delivery/porcelain-paths "R  src/old.clj -> src/new.clj\n"))))
-  (testing "copy records follow the same porcelain format"
-    (is (= ["src/copy.clj"]
-           (delivery/porcelain-paths "C  src/original.clj -> src/copy.clj\n")))))
+  (testing "copy records expose their source and destination too"
+    (is (= ["src/original.clj" "src/copy.clj"]
+           (delivery/porcelain-paths "C  src/original.clj -> src/copy.clj\n"))))
+  (testing "multiple records retain deterministic porcelain order"
+    (is (= ["a.clj" "b.clj" "c.clj"]
+           (delivery/porcelain-paths
+            "R  a.clj -> b.clj\n?? c.clj\n")))))
 
 (deftest process-boundary-is-injectable
   (binding [delivery/*process-fn*
