@@ -2,6 +2,13 @@
   (:require [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.model :as model]))
 
+(deftest run-id-validates-deterministic-entropy
+  (is (= "run-1000-12345678"
+         (model/run-id 1000 "1234-5678-90")))
+  (is (thrown-with-msg? Exception
+                        #"at least 8 characters"
+                        (model/run-id 1000 "short"))))
+
 (deftest agent-run-contract
   (let [run (model/agent-run {:goal "fix it"
                               :source-project "/source"

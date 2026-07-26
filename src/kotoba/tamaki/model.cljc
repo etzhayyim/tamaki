@@ -21,7 +21,11 @@
 (defn run-id
   ([now-ms] (run-id now-ms (str (random-uuid))))
   ([now-ms entropy]
-   (str "run-" now-ms "-" (subs (str/replace entropy #"-" "") 0 8))))
+   (let [normalized (str/replace (str entropy) #"-" "")]
+     (when (< (count normalized) 8)
+       (throw (ex-info "Run ID entropy must contain at least 8 characters"
+                       {:entropy entropy :minimum-length 8})))
+     (str "run-" now-ms "-" (subs normalized 0 8)))))
 
 (defn agent-run
   [{:keys [id goal project source-project repo pin mode node model runner capabilities budget parent]
