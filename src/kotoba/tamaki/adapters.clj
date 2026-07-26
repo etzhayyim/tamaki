@@ -23,8 +23,9 @@
 (defn command-exists?
   [command]
   (try
-    (zero? (.waitFor (.start (ProcessBuilder. ["sh" "-c"
-                                               (str "command -v " command " >/dev/null 2>&1")]))))
+    (zero? (.waitFor (.start (ProcessBuilder.
+                              ["sh" "-c" "command -v -- \"$1\" >/dev/null 2>&1"
+                               "tamaki-command-exists" (str command)]))))
     (catch Exception _ false)))
 
 (defn local-command
