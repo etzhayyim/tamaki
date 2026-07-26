@@ -196,8 +196,34 @@
                      (get-in @commands [0 2 "KC_RUN_TIMEOUT_MS"])))
               (is (= "180000"
                      (get-in @commands [0 2 "KC_PROCESS_TIMEOUT_MS"])))
+              ;; Improvement/implementation runs must be free to edit. The
+              ;; DONE+no-edit gate is reserved for independent review
+              ;; (agent.run/require-done-no-edit? true); see issue 4319650.
+              (is (nil? (get-in @commands [0 2 "KC_REQUIRE_DONE_NO_EDIT"])))
               (is (= [:run/submitted :run/leased :run/started terminal-kind]
                      (event-kinds root))))))))))
+
+(deftest independent-review-run-injects-done-no-edit-gate
+  (let [root (temp-root)
+        env (atom nil)
+        reviewer (model/agent-run
+                  {:goal "Independently review"
+                   :project "/tmp/project"
+                   :runner "codex"
+                   :require-done-no-edit? true}
+                  4000)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  adapters/readiness (constantly ready-report)
+                  cli/now (constantly 4000)]
+      (store/append-event! root (model/event reviewer :run/submitted 4000
+                                             {:run reviewer}))
+      (binding [adapters/*execute-fn*
+                (fn [_ _]
+                  (reset! env adapters/*process-env*)
+                  0)]
+        (is (zero? (cli/execute-run! reviewer)))
+        (is (= "1" (get @env "KC_REQUIRE_DONE_NO_EDIT")))))))
 
 (deftest failed-run-resumes-through-public-command
   (let [root (temp-root)

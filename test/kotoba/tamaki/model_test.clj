@@ -15,12 +15,19 @@
                               :project "/tmp/example"
                               :runner "claude-a"
                               :capabilities #{:git}}
-                             1000)]
+                             1000)
+        review (model/agent-run {:goal "review only"
+                                 :require-done-no-edit? true}
+                                1001)]
     (is (= :queued (:agent.run/status run)))
     (is (= "claude-a" (:agent.run/runner run)))
     (is (= "/source" (:agent.run/source-project run)))
     (is (= #{:git} (:agent.run/required-capabilities run)))
-    (is (= 12 (get-in run [:agent.run/budget :max-turns])))))
+    (is (= 12 (get-in run [:agent.run/budget :max-turns])))
+    (is (false? (:agent.run/require-done-no-edit? run))
+        "implementation runs default to editable")
+    (is (true? (:agent.run/require-done-no-edit? review))
+        "observe-only review runs opt into DONE+no-edit")))
 
 (deftest transition-gate
   (let [run (model/agent-run {:goal "fix it"} 1000)

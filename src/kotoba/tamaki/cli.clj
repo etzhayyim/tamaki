@@ -641,27 +641,31 @@
                  (adapters/local-command leased))
           _ (emit! leased :run/started {:agent.run/command argv})
           exit (binding [adapters/*process-env*
-                         (merge
-                          {"KC_LOOP_ID" (:agent.run/id run)
-                           "KC_SESSION" (:agent.run/id run)
-                           "KC_WORKER_ID" (:agent.run/worker leased)
-                           "KC_RUN_TIMEOUT_MS"
-                           (str (get-in run [:agent.run/budget :deadline-ms]
-                                        1200000))
-                           "KC_LEASE_TTL_MS"
-                           (str (get-in run [:agent.run/budget :deadline-ms]
-                                        1200000))
-                           "KC_SUBSCRIPTION_TIMEOUT_MS"
-                           (str (min 900000
-                                     (get-in run
-                                             [:agent.run/budget :deadline-ms]
-                                             1200000)))
-                           "KC_PROCESS_TIMEOUT_MS"
-                           (str (get-in run
-                                        [:agent.run/budget :test-timeout-ms]
-                                        180000))
-                           "KC_REQUIRE_DONE_NO_EDIT" "1"}
-                          (:env runner))
+                         (cond-> (merge
+                                  {"KC_LOOP_ID" (:agent.run/id run)
+                                   "KC_SESSION" (:agent.run/id run)
+                                   "KC_WORKER_ID" (:agent.run/worker leased)
+                                   "KC_RUN_TIMEOUT_MS"
+                                   (str (get-in run [:agent.run/budget :deadline-ms]
+                                                1200000))
+                                   "KC_LEASE_TTL_MS"
+                                   (str (get-in run [:agent.run/budget :deadline-ms]
+                                                1200000))
+                                   "KC_SUBSCRIPTION_TIMEOUT_MS"
+                                   (str (min 900000
+                                             (get-in run
+                                                     [:agent.run/budget :deadline-ms]
+                                                     1200000)))
+                                   "KC_PROCESS_TIMEOUT_MS"
+                                   (str (get-in run
+                                                [:agent.run/budget :test-timeout-ms]
+                                                180000))}
+                                  (:env runner))
+                           ;; Only independent-review / observe-only runs may
+                           ;; force DONE with a clean tree. Improvement cycles
+                           ;; must edit and commit (see Radicle issue 4319650).
+                           (:agent.run/require-done-no-edit? run)
+                           (assoc "KC_REQUIRE_DONE_NO_EDIT" "1"))
                          adapters/*activity-fn*
                          (fn [line]
                            (let [[kind detail stream]
@@ -1273,7 +1277,8 @@
                    :mode :local :model (:agent.run/model worker)
                    :runner (:agent.run/runner worker)
                    :parent (:agent.run/id worker)
-                   :capabilities #{:git :radicle}}
+                   :capabilities #{:git :radicle}
+                   :require-done-no-edit? true}
                   (now))
         verdict-file (io/file (:agent.run/project worker) ".tamaki" "reviews"
                               (str (:agent.run/id reviewer) ".edn"))

@@ -29,8 +29,10 @@
 
 (defn agent-run
   [{:keys [id goal project source-project repo pin mode node model runner
-           capabilities budget parent actor replica organism]
-    :or {mode :local node :auto capabilities #{} budget {}}}
+           capabilities budget parent actor replica organism
+           require-done-no-edit?]
+    :or {mode :local node :auto capabilities #{} budget {}
+         require-done-no-edit? false}}
    now-ms]
   (when (str/blank? goal)
     (throw (ex-info "AgentRun requires a non-blank goal" {:field :goal})))
@@ -56,6 +58,10 @@
    :agent.run/actor actor
    :agent.run/organism organism
    :agent.run/replica replica
+   ;; Independent-review (and other observe-only) runs must finish with DONE
+   ;; and leave the working tree untouched. Implementation / improvement runs
+   ;; must be free to edit; only set this when the role is truly no-edit.
+   :agent.run/require-done-no-edit? (boolean require-done-no-edit?)
    :agent.run/status :queued
    :agent.run/created-at now-ms
    :agent.run/updated-at now-ms
