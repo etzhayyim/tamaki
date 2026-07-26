@@ -47,7 +47,11 @@
        "print(\"\\(w) \\(h) \\(mean) \\(sqrt(variance)) "
        "\\(Double(colored)/Double(max(1,n)))\")"))
 
-(defn- execute-with-timeout [argv cwd timeout-seconds]
+(defn execute-with-timeout
+  "Run argv in cwd with a bounded wall-clock timeout. Public (not defn-) so
+  tests can inject deterministic swift/OCR/CoreGraphics stand-ins the same
+  way kotoba.tamaki.delivery/execute! is stubbed for capture! tests."
+  [argv cwd timeout-seconds]
   (let [process (.start (doto (ProcessBuilder. ^java.util.List argv)
                           (.directory (io/file cwd))))
         out (future (slurp (.getInputStream process)))
@@ -222,6 +226,18 @@
             (str/join "; " findings))
        "")}))
 
+(def max-ocr-text-chars
+  "Cap on stored raw OCR text. Enough to preserve the exact evidence behind
+  a :healthy/:degraded verdict (e.g. which provider cards were or were not
+  read) without unbounded growth of the local event store."
+  4000)
+
+(defn bounded-ocr-text
+  "Truncate OCR text to `max-ocr-text-chars` so `analyze!` can attach it as
+  replayable diagnostic evidence for every Observatory verdict."
+  [text]
+  (subs text 0 (min (count text) max-ocr-text-chars)))
+
 (defn analyze! [project capture]
   (if-not (= :captured (:visual/status capture))
     capture
@@ -231,7 +247,11 @@
                  ["swift" "-e" ocr-script (:visual/path capture)]
                  project 20)
             text (str/lower-case (:out ocr))]
-        (merge capture metrics (evaluate-observatory metrics text)))
+        ;; Store the OCR text alongside the verdict so a :degraded finding
+        ;; (e.g. "provider usage cards not visible") carries the evidence
+        ;; that produced it, instead of forcing a blind re-run to diagnose.
+        (merge capture metrics (evaluate-observatory metrics text)
+               {:visual/ocr-text (bounded-ocr-text text)}))
       (catch Exception error
         (assoc capture :visual/status :analysis-failed
                :visual/error (.getMessage error))))))

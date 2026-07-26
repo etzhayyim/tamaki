@@ -170,3 +170,43 @@
                 "One or more provider usage cards are not visible; "
                 "Live activity panel was not recognized")
            (:visual/suggested-issue result)))))
+
+(deftest bounded-ocr-text-truncates-long-output
+  ;; Unbounded OCR text must not be allowed to grow the local event store
+  ;; without limit.
+  (let [long-text (apply str (repeat 5000 "a"))
+        bounded (visual/bounded-ocr-text long-text)]
+    (is (= visual/max-ocr-text-chars (count bounded)))
+    (is (= (subs long-text 0 visual/max-ocr-text-chars) bounded))))
+
+(deftest bounded-ocr-text-preserves-short-output
+  (is (= "tamaki observatory" (visual/bounded-ocr-text "tamaki observatory"))))
+
+(deftest analyze-attaches-ocr-text-evidence-to-verdict
+  ;; A :degraded verdict (e.g. this cycle's observed "provider usage cards
+  ;; are not visible" finding) must carry the literal OCR text that produced
+  ;; it. Without this, diagnosing a degraded Observatory requires a blind
+  ;; re-capture instead of inspecting the durable record.
+  (with-redefs [visual/execute-with-timeout
+                (fn [argv _cwd _timeout-seconds]
+                  (cond
+                    (= (nth argv 2) visual/metrics-script)
+                    {:exit 0 :out "1280 800 100.0 20.0 0.5" :err ""}
+
+                    (= (nth argv 2) visual/ocr-script)
+                    {:exit 0 :out "Tamaki Observatory Codex Claude Activity"
+                     :err ""}
+
+                    :else {:exit 1 :out "" :err "unexpected"}))]
+    (let [result (visual/analyze! "." {:visual/status :captured
+                                        :visual/path "observatory.png"})]
+      (is (= :degraded (:visual/status result)))
+      (is (= "tamaki observatory codex claude activity"
+             (:visual/ocr-text result)))
+      (is (some #(= "One or more provider usage cards are not visible" %)
+                (:visual/findings result))))))
+
+(deftest analyze-leaves-uncaptured-status-untouched
+  (is (= {:visual/status :unavailable :visual/error "no window"}
+         (visual/analyze! "." {:visual/status :unavailable
+                                :visual/error "no window"}))))
