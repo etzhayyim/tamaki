@@ -50,10 +50,17 @@
     (validate-spec (edn/read-string (slurp file)))))
 
 (defn runner-pool [spec]
-  (->> (:actor/runners spec)
-       (mapcat (fn [{:keys [runner weight]}]
-                 (repeat (or weight 1) (name runner))))
-       vec))
+  (let [runners (:actor/runners spec)
+        max-weight (apply max (map #(or (:weight %) 1) runners))]
+    ;; Spread the first replicas across providers before consuming additional
+    ;; weight, so desired=2 never means two copies of the same account merely
+    ;; because that provider has the highest weight.
+    (->> (range max-weight)
+         (mapcat (fn [round]
+                   (keep (fn [{:keys [runner weight]}]
+                           (when (< round (or weight 1)) (name runner)))
+                         runners)))
+         vec)))
 
 (defn actor-runs [spec runs]
   (let [id (:actor/id spec)]

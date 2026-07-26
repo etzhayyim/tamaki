@@ -13,7 +13,7 @@
                    {:runner :claude :weight 1}]})
 
 (deftest actor-spec-is-governed-and-weighted
-  (is (= ["codex" "codex" "claude"] (actor/runner-pool spec)))
+  (is (= ["codex" "claude" "codex"] (actor/runner-pool spec)))
   (is (= :revenue/test (:actor/id (actor/validate-spec spec))))
   (testing "invalid desired state and policy are rejected"
     (is (thrown? Exception
