@@ -5,7 +5,8 @@
             [kotoba.tamaki.cli :as cli]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.model :as model]
-            [kotoba.tamaki.store :as store]))
+            [kotoba.tamaki.store :as store]
+            [kotoba.tamaki.supervisor :as supervisor]))
 
 (def ready-report
   {:bb {:ok? true}
@@ -24,6 +25,18 @@
 
 (defn event-kinds [root]
   (mapv :tamaki.event/kind (store/read-local-events root)))
+
+(deftest consultation-speaks-only-at-the-decision-boundary
+  (let [requests (atom [])]
+    (with-redefs [supervisor/consult!
+                  (fn [request]
+                    (swap! requests conj request)
+                    {:run-id "supervisor" :decision :rejected})]
+      (is (zero? (:exit (call ["consult" "Integrate reviewed patch"]))))
+      (is (true? (:voice? (first @requests))))
+      (is (zero? (:exit
+                  (call ["consult" "CI confirmation" "--silent"]))))
+      (is (false? (:voice? (second @requests)))))))
 
 (deftest public-submit-status-and-agents
   (let [root (temp-root)]

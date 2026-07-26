@@ -33,7 +33,7 @@
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
        "  tamaki loop start|status|tick|run ...\n"
-       "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --voice]\n"
+       "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
@@ -59,6 +59,7 @@
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
           (if (contains? #{"--execute" "--approve" "--auto-approve" "--voice"
+                           "--silent"
                            "--continuous"} x)
             (recur (rest xs) positional
                    (assoc options (keyword (subs x 2)) true))
@@ -90,7 +91,9 @@
        :summary summary
        :action (or (:action options) "Continue the agent loop")
        :impact (:impact options)
-       :voice? (:voice options)}))
+       ;; A consultation is a decision boundary, so Tamaki speaks by default.
+       ;; --silent remains available for CI and accessibility preferences.
+       :voice? (not (:silent options))}))
     0))
 
 (defn voice!
@@ -819,25 +822,44 @@
                                          (let [after (quality-snapshot)]
                                            (assoc (intelligence/effect before after)
                                                   :effect/after after)))))
-                      (if (:tamaki.loop/auto-approve campaign)
-                        (do
-                          (integrate! {:positional [patch-id]
-                                       :options {:run (:agent.run/id run)
-                                                 :issue issue-id
-                                                 :tests evidence
-                                                 :approve true}})
+                      (let [decision
+                            (if (:tamaki.loop/auto-approve campaign)
+                              :approved
+                              (:decision
+                               (supervisor/consult!
+                                {:title "Tamaki: integration confirmation"
+                                 :summary
+                                 (str "Issue " issue-id
+                                      " passed implementation and independent review.")
+                                 :action (str "Integrate patch " patch-id)
+                                 :impact
+                                 "Updates the repository and resolves the Radicle issue."
+                                 :voice? true})))]
+                        (if (= :approved decision)
+                          (do
+                            (integrate! {:positional [patch-id]
+                                         :options {:run (:agent.run/id run)
+                                                   :issue issue-id
+                                                   :tests evidence
+                                                   :approve true}})
+                            (append-loop-event!
+                             campaign :loop/cycle-integrated
+                             {:loop/cycle cycle :issue/id issue-id
+                              :patch/id patch-id
+                              :hil/decision decision
+                              :agent.run/id (:agent.run/id run)}))
                           (append-loop-event!
-                           campaign :loop/cycle-integrated
+                           campaign :loop/cycle-reviewed
                            {:loop/cycle cycle :issue/id issue-id
-                            :patch/id patch-id :agent.run/id (:agent.run/id run)}))
-                        (append-loop-event!
-                         campaign :loop/cycle-reviewed
-                         {:loop/cycle cycle :issue/id issue-id
-                          :patch/id patch-id :agent.run/id (:agent.run/id run)}))
-                      (print-edn {:loop/id id :loop/cycle cycle
-                                  :result (if (:tamaki.loop/auto-approve campaign)
-                                            :integrated :awaiting-approval)
-                                  :issue/id issue-id :patch/id patch-id}))))))))
+                            :patch/id patch-id
+                            :hil/decision decision
+                            :agent.run/id (:agent.run/id run)}))
+                        (print-edn
+                         {:loop/id id :loop/cycle cycle
+                          :result (if (= :approved decision)
+                                    :integrated :awaiting-approval)
+                          :hil/decision decision
+                          :issue/id issue-id :patch/id patch-id})))))))))
             )
         (catch Exception e
           (append-loop-event! campaign :loop/cycle-failed
