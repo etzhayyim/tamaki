@@ -14,6 +14,7 @@
             [kotoba.tamaki.intelligence-test]
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.runners-test]
+            [kotoba.tamaki.result-test]
             [kotoba.tamaki.store-test]
             [kotoba.tamaki.supervisor-test]
             [kotoba.tamaki.visual-test])
@@ -34,6 +35,7 @@
                                'kotoba.tamaki.lineage-test
                                'kotoba.tamaki.intelligence-test
                                'kotoba.tamaki.runners-test
+                               'kotoba.tamaki.result-test
                                'kotoba.tamaki.store-test
                                'kotoba.tamaki.supervisor-test
                                'kotoba.tamaki.visual-test)]
