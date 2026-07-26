@@ -42,6 +42,21 @@
          (intelligence/parse-issue-metadata
           "Blocked by: abcdef1\nAcceptance: all suites green\n"))))
 
+(deftest issue-list-parses-open-issues-and-ignores-chrome
+  (let [output (str "╭───────────────────────────────────────────────────╮\n"
+                     "│ ●   ID        Title                    Author  Opened        │\n"
+                     "├─────────────────────────────────────────────────┤\n"
+                     "│ ●   abc1234f  Add bounded retries       alice   3 days ago   │\n"
+                     "│ ●   def56789  Improve coverage          bob     1 week ago   │\n"
+                     "╰──────────────────────────────────────────────╯\n")]
+    (is (= [(intelligence/issue-node {:id "abc1234f" :title "Add bounded retries"})
+            (intelligence/issue-node {:id "def56789" :title "Improve coverage"})]
+           (intelligence/parse-issue-list output)))))
+
+(deftest issue-list-of-blank-output-is-empty
+  (is (= [] (intelligence/parse-issue-list "")))
+  (is (= [] (intelligence/parse-issue-list nil))))
+
 (deftest independent-verdict-is-fail-closed
   (is (intelligence/valid-review-verdict?
        {:review/verdict :accepted :review/commit "abc"
