@@ -36,6 +36,12 @@
          (intelligence/effect {:tests 10 :assertions 20 :failures 0}
                               {:tests 11 :assertions 24 :failures 0}))))
 
+(deftest effect-counts-fewer-failures-as-an-improvement
+  (is (= {:effect/tests-delta 0 :effect/assertions-delta 0
+          :effect/failures-delta -1 :effect/improved? true}
+         (intelligence/effect {:tests 10 :assertions 20 :failures 1}
+                              {:tests 10 :assertions 20 :failures 0}))))
+
 (deftest issue-metadata-extracts-blockers-and-criteria
   (is (= {:issue/blockers #{"abcdef1"}
           :issue/criteria ["all suites green across both runtimes"]
