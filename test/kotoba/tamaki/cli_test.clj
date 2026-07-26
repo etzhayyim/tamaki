@@ -38,11 +38,41 @@
                   (call ["consult" "CI confirmation" "--silent"]))))
       (is (false? (:voice? (second @requests)))))))
 
+(deftest business-kpi-observation-is-durable-and-queryable
+  (let [root (temp-root)
+        observation (java.io.File/createTempFile "tamaki-kpi-" ".edn")
+        targets (java.io.File/createTempFile "tamaki-targets-" ".edn")]
+    (spit observation
+          (pr-str {:period-days 7
+                   :stocks {:mrr-jpy 500000 :qualified-leads 20}
+                   :flows {:delta-mrr-jpy 100000
+                           :experiments-shipped 2}
+                   :rates {:confidence 0.8}}))
+    (spit targets
+          (pr-str {:target/mrr-jpy 1000000
+                   :target/risk-adjusted-delta-mrr-jpy 100000
+                   :target/experiments-per-week 3
+                   :target/activation-rate 0.3
+                   :target/paid-conversion-rate 0.1
+                   :target/max-churn-rate 0.05}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [{observed :value}
+            (call ["kpi" "observe" "--file" (.getPath observation)
+                   "--targets" (.getPath targets)])
+            {status :value}
+            (call ["kpi" "status" "--targets" (.getPath targets)])]
+        (is (= :observed (:business/status observed)))
+        (is (= observed status))
+        (is (= [:business/observed] (event-kinds root)))))))
+
 (deftest supervisor-ensure-reuses-one-compatible-loop
   (let [root (temp-root)
         args ["loop" "ensure"
               "--project" "/tmp/project"
               "--objective" "operate continuously"
+              "--organism-name" "Hikari"
               "--runners" "codex,claude"
               "--continuous"]]
     (with-redefs [store/default-root (constantly root)
@@ -55,6 +85,54 @@
         (is (= first-id second-id))
         (is (= 1 (count active)))
         (is (false? (:tamaki.loop/auto-approve (first active))))))))
+
+(deftest loop-ensure-from-edn-spec-is-idempotent
+  (let [root (temp-root)
+        spec-file (java.io.File/createTempFile "tamaki-loop-spec-" ".edn")]
+    (spit spec-file
+          (pr-str {:loop/id :toshokan/maturity
+                   :loop/objective "さらに成熟度を向上"
+                   :loop/project "/tmp/toshokan"
+                   :loop/runners ["codex" "claude"]
+                   :loop/continuous true
+                   :loop/interval-ms 900000
+                   :loop/auto-approve true
+                   :loop/max-failures 4}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 2000)]
+      (let [args ["loop" "ensure" "--spec" (.getPath spec-file)]
+            first-c (:value (call args))
+            second-c (:value (call args))
+            active (filter #(= :active (:tamaki.loop/status %))
+                           (vals (cli/campaigns)))]
+        (is (= (:tamaki.loop/id first-c) (:tamaki.loop/id second-c)))
+        (is (= "toshokan/maturity" (:tamaki.loop/spec-id first-c)))
+        (is (= 900000 (:tamaki.loop/interval-ms first-c)))
+        (is (true? (:tamaki.loop/continuous first-c)))
+        (is (true? (:tamaki.loop/auto-approve first-c)))
+        (is (= 1 (count active)))))))
+
+(deftest github-evolution-boundary-stops-only-matching-active-loops
+  (let [root (temp-root)
+        project-a "/tmp/project-a"
+        project-b "/tmp/project-b"]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (call ["loop" "start" "--project" project-a "--objective" "evolve a"])
+      (call ["loop" "start" "--project" project-b "--objective" "evolve b"])
+      (let [{:keys [value exit]}
+            (call ["loop" "stop-active" "--project" project-a
+                   "--reason" "github-evolution-boundary"])
+            campaigns (vals (cli/campaigns))
+            a (first (filter #(= project-a (:tamaki.loop/project %)) campaigns))
+            b (first (filter #(= project-b (:tamaki.loop/project %)) campaigns))]
+        (is (zero? exit))
+        (is (= 1 (count (:stopped value))))
+        (is (= :completed (:tamaki.loop/status a)))
+        (is (= :github-evolution-boundary (:tamaki.loop/stop-reason a)))
+        (is (= :active (:tamaki.loop/status b)))))))
 
 (deftest public-submit-status-and-agents
   (let [root (temp-root)]
@@ -99,9 +177,9 @@
                       store/backend (constantly :file)
                       adapters/readiness (constantly ready-report)
                       cli/now (constantly 2000)]
-          (binding [adapters/*execute-fn*
+                  (binding [adapters/*execute-fn*
                     (fn [argv cwd]
-                      (swap! commands conj [argv cwd])
+                      (swap! commands conj [argv cwd adapters/*process-env*])
                       runtime-exit)]
             (let [{run :value} (call ["submit" "execute me"
                                       "--project" "/tmp/project"])
@@ -112,6 +190,12 @@
               (is (= expected-status
                      (:agent.run/status (:value (call ["status" id])))))
               (is (= 1 (count @commands)))
+              (is (= "1200000"
+                     (get-in @commands [0 2 "KC_LEASE_TTL_MS"])))
+              (is (= "1200000"
+                     (get-in @commands [0 2 "KC_RUN_TIMEOUT_MS"])))
+              (is (= "180000"
+                     (get-in @commands [0 2 "KC_PROCESS_TIMEOUT_MS"])))
               (is (= [:run/submitted :run/leased :run/started terminal-kind]
                      (event-kinds root))))))))))
 
@@ -188,6 +272,9 @@
             (call ["loop" "start"
                    "--project" "/repo"
                    "--objective" "grow safely"
+                   "--organism-name" "Hikari"
+                   "--organism-generation" "3"
+                   "--organism-parent" "tamaki-meguru-2"
                    "--runner" "claude-zai"
                    "--max-cycles" "4"
                    "--max-failures" "2"])
@@ -198,6 +285,15 @@
         (is (= 2 (:tamaki.loop/max-failures status)))
         (is (= "claude-zai" (:tamaki.loop/runner status)))
         (is (= "claude-zai:" (:tamaki.loop/model status)))
+        (is (= "Hikari"
+               (get-in status [:tamaki.loop/organism
+                               :organism/given-name])))
+        (is (= 3
+               (get-in status [:tamaki.loop/organism
+                               :organism/generation])))
+        (is (= "tamaki-meguru-2"
+               (get-in status [:tamaki.loop/organism
+                               :organism/parent])))
         (is (= [:loop/started] (event-kinds root)))))))
 
 (deftest persistent-loop-accepts-a-managed-provider-pool

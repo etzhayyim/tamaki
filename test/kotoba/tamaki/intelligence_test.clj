@@ -117,3 +117,9 @@
          (:feedback-pressure
           (intelligence/dynamics-signals
            {:failures 3 :max-failures 0 :active-runs 0 :open-issues 0})))))
+
+(deftest dynamics-signals-tolerate-missing-operational-telemetry
+  (is (= {:feedback-pressure 0.0 :wip-pressure 0.0 :urgency 0.0}
+         (intelligence/dynamics-signals {})))
+  (is (= {:feedback-pressure 0.0 :wip-pressure 0.0 :urgency 0.0}
+         (intelligence/dynamics-signals nil))))

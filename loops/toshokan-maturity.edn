@@ -1,0 +1,30 @@
+;; Continuous maturity loop for kotoba-lang/toshokan (public-domain corpus).
+;; Register/ensure with:
+;;   bin/tamaki loop ensure --spec loops/toshokan-maturity.edn
+;;   bin/tamaki loop list
+;;   bin/tamaki loop ensure-all
+;;
+;; Resolve :loop/project relative to TAMAKI_WORKSPACE / FLEET_ROOT /
+;; COM_JUNKAWASAKI_ROOT (superproject root). Absolute paths also work.
+{:loop/id :toshokan/maturity
+ :loop/enabled true
+ :loop/description
+ "Raise toshokan maturity: bibliographic harvest, public-domain fulltext
+  (Gutenberg + national-library metadata), patents where licensed, journals as
+  SSoT, push main when clean. Prefer measurable coverage growth over prose."
+ :loop/tags #{:toshokan :coverage :fulltext :maturity :continuous}
+ :loop/objective
+ "さらに成熟度を向上: expand public-domain bibliographic coverage and fulltext
+  (Gutenberg + national-library harvest), grow patents corpus where licensed,
+  keep 80-data/public journals as SSoT, run daemon/fulltext ticks with --push
+  when the tree is clean, and raise queryable entity maturity without inventing
+  metrics. Prefer real harvest/fulltext yield over documentation-only changes."
+ :loop/project "orgs/kotoba-lang/toshokan"
+ :loop/workspace-env "COM_JUNKAWASAKI_ROOT"
+ :loop/continuous true
+ :loop/interval-ms 900000
+ :loop/max-cycles 10
+ :loop/max-failures 4
+ :loop/auto-approve true
+ :loop/organism-name "Toshokan"
+ :loop/runners ["codex" "claude" "claude-zai" "grok"]}

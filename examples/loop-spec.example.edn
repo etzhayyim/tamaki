@@ -1,0 +1,14 @@
+;; Copy into loops/<name>.edn (or any directory on TAMAKI_LOOPS_PATH) and
+;; ensure with: bin/tamaki loop ensure --spec loops/<name>.edn
+{:loop/id :example/continuous-maturity
+ :loop/enabled true
+ :loop/description "Illustrative continuous agent loop (not loaded: *example*)."
+ :loop/tags #{:example}
+ :loop/objective "raise maturity, coverage, reliability, and documentation"
+ :loop/project "."
+ :loop/continuous true
+ :loop/interval-ms 900000
+ :loop/max-cycles 10
+ :loop/max-failures 3
+ :loop/auto-approve false
+ :loop/runners ["codex" "claude" "claude-zai" "grok"]}

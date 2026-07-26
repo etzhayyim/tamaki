@@ -98,3 +98,15 @@
                (assoc campaign :tamaki.loop/cycles 1000))))
     (is (= ["codex" "claude" "claude-zai" "grok" "codex"]
            (mapv #(loop/runner-for-cycle campaign %) (range 1 6))))))
+
+(deftest every-loop-has-a-thirty-day-external-lease
+  (let [created-at 1000
+        campaign (loop/campaign {:objective "finite becoming"
+                                 :project "/repo"
+                                 :continuous true}
+                                created-at)
+        expires (:tamaki.loop/expires-at campaign)]
+    (is (= (+ created-at (* 30 86400000)) expires))
+    (is (nil? (loop/stop-reason campaign (dec expires))))
+    (is (= :organism-lease-expired
+           (loop/stop-reason campaign expires)))))

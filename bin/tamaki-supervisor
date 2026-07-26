@@ -2,41 +2,116 @@
 set -euo pipefail
 
 tamaki_root="$(cd "$(dirname "$0")/.." && pwd)"
-project="${TAMAKI_SUPERVISOR_PROJECT:-$tamaki_root}"
-objective="${TAMAKI_SUPERVISOR_OBJECTIVE:-discover and resolve the highest-leverage issue that improves maturity, coverage, reliability, documentation, or sustainable revenue}"
-runners="${TAMAKI_SUPERVISOR_RUNNERS:-codex,claude,claude-zai,grok}"
-interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-900000}"
-max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-4}"
+# EDN LoopSpec is the preferred registration surface. Env vars remain as
+# overrides for operators who have not yet migrated a custom loop.
+loop_spec="${TAMAKI_LOOP_SPEC:-$tamaki_root/loops/revenue-growth.edn}"
+project="${TAMAKI_SUPERVISOR_PROJECT:-}"
+objective="${TAMAKI_SUPERVISOR_OBJECTIVE:-}"
+runners="${TAMAKI_SUPERVISOR_RUNNERS:-}"
+interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-}"
+max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-}"
 actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.edn}"
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
+bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
+self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
+# Optional second continuous loop. Empty by default because merely ensuring a
+# campaign without a resident runner would present inactive work as active.
+extra_loop_spec="${TAMAKI_EXTRA_LOOP_SPEC:-}"
 
 cd "$tamaki_root"
-loop_id="$(
-  bin/tamaki loop ensure \
-    --project "$project" \
-    --objective "$objective" \
-    --runners "$runners" \
-    --continuous \
-    --interval-ms "$interval_ms" \
-    --max-failures "$max_failures" |
-  clojure -M -e '(println (:tamaki.loop/id (read)))'
-)"
+export COM_JUNKAWASAKI_ROOT="${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/../../.." && pwd)}"
+export TAMAKI_WORKSPACE="${TAMAKI_WORKSPACE:-$COM_JUNKAWASAKI_ROOT}"
+export FLEET_ROOT="${FLEET_ROOT:-$COM_JUNKAWASAKI_ROOT}"
+
+loop_id=""
+if [[ "$self_evolution_mode" == "github" ]]; then
+  # GitHub Issue/PR evolution is fail-closed: retire every legacy campaign so
+  # it cannot integrate a Radicle patch directly into the canonical checkout.
+  bin/tamaki loop stop-active \
+    --project "${project:-$tamaki_root}" \
+    --reason github-evolution-boundary
+else
+  ensure_args=(loop ensure)
+  if [[ -f "$loop_spec" ]]; then
+    ensure_args+=(--spec "$loop_spec")
+  else
+    ensure_args+=(
+      --project "${project:-$tamaki_root}"
+      --objective "${objective:-discover and resolve the highest-leverage issue that improves maturity, coverage, reliability, documentation, or sustainable revenue}"
+      --runners "${runners:-codex,claude,claude-zai,grok}"
+      --continuous
+      --interval-ms "${interval_ms:-900000}"
+      --max-failures "${max_failures:-4}"
+    )
+  fi
+  # Optional CLI overrides on top of the EDN base.
+  [[ -n "$project" ]] && ensure_args+=(--project "$project")
+  [[ -n "$objective" ]] && ensure_args+=(--objective "$objective")
+  [[ -n "$runners" ]] && ensure_args+=(--runners "$runners")
+  [[ -n "$interval_ms" ]] && ensure_args+=(--interval-ms "$interval_ms")
+  [[ -n "$max_failures" ]] && ensure_args+=(--max-failures "$max_failures")
+
+  loop_id="$(
+    bin/tamaki "${ensure_args[@]}" |
+    clojure -M -e '(println (:tamaki.loop/id (read)))'
+  )"
+
+  # Register additional EDN loops so they appear in `loop list` / campaigns.
+  # They are ensured (durable) but the supervisor process runs the primary
+  # loop_id; extra loops can be driven by a second launchd job or
+  # `bin/tamaki loop run <id>`.
+  if [[ -n "$extra_loop_spec" && -f "$extra_loop_spec" && "$extra_loop_spec" != "$loop_spec" ]]; then
+    bin/tamaki loop ensure --spec "$extra_loop_spec" >/dev/null || true
+  fi
+fi
 
 actor_pid=""
+bridge_pid=""
 cleanup() {
   if [[ -n "$actor_pid" ]] && kill -0 "$actor_pid" 2>/dev/null; then
     kill "$actor_pid" 2>/dev/null || true
     wait "$actor_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$bridge_pid" ]] && kill -0 "$bridge_pid" 2>/dev/null; then
+    kill "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
 
 (
   while true; do
-    bin/tamaki actor reconcile "$actor_spec" --execute || true
+    actor_specs=("$actor_spec")
+    if [[ -z "${TAMAKI_SUPERVISOR_ACTOR_SPEC:-}" ]]; then
+      for discovered_spec in "$tamaki_root"/actors/*.edn; do
+        [[ "$discovered_spec" == "$actor_spec" ]] && continue
+        grep -q ':actor/id' "$discovered_spec" || continue
+        actor_specs+=("$discovered_spec")
+      done
+    fi
+    actor_reconcile_pids=()
+    for current_actor_spec in "${actor_specs[@]}"; do
+      bin/tamaki actor reconcile "$current_actor_spec" --execute &
+      actor_reconcile_pids+=("$!")
+    done
+    for reconcile_pid in "${actor_reconcile_pids[@]}"; do
+      wait "$reconcile_pid" || true
+    done
     sleep "$actor_interval_seconds"
   done
 ) &
 actor_pid=$!
 
-bin/tamaki loop run "$loop_id"
+(
+  while true; do
+    bin/tamaki bridge reconcile --execute || true
+    sleep "$bridge_interval_seconds"
+  done
+) &
+bridge_pid=$!
+
+if [[ "$self_evolution_mode" == "github" ]]; then
+  wait "$actor_pid"
+else
+  bin/tamaki loop run "$loop_id"
+fi

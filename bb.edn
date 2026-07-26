@@ -1,4 +1,4 @@
 {:paths ["src" "test"]
  :tasks
- {tamaki {:task (apply shell "bb" "-cp" "src" "-m" "kotoba.tamaki.cli" *command-line-args*)}
-  test {:task (shell "bb" "-cp" "src:test" "-m" "kotoba.tamaki.test-runner")}}}
+ {tamaki {:task (apply shell "bb" "-cp" "src:../hil/src" "-m" "kotoba.tamaki.cli" *command-line-args*)}
+  test {:task (shell "bb" "-cp" "src:test:../hil/src" "-m" "kotoba.tamaki.test-runner")}}}

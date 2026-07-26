@@ -29,7 +29,7 @@
 
 (defn agent-run
   [{:keys [id goal project source-project repo pin mode node model runner
-           capabilities budget parent actor replica]
+           capabilities budget parent actor replica organism]
     :or {mode :local node :auto capabilities #{} budget {}}}
    now-ms]
   (when (str/blank? goal)
@@ -54,6 +54,7 @@
                             budget)
    :agent.run/parent parent
    :agent.run/actor actor
+   :agent.run/organism organism
    :agent.run/replica replica
    :agent.run/status :queued
    :agent.run/created-at now-ms
@@ -91,8 +92,20 @@
     :run/started (transition run :running at data)
     :run/checkpointed (transition run :checkpointed at data)
     :run/held (transition run :held at data)
-    :run/succeeded (transition run :succeeded at data)
-    :run/failed (transition run :failed at data)
+    ;; Older supervisor consultation records omitted leased/started. Preserve
+    ;; their audit history without allowing callers to bypass `transition`.
+    :run/succeeded (if (= :queued (:agent.run/status run))
+                     (merge run data
+                            {:agent.run/status :succeeded
+                             :agent.run/updated-at at
+                             :agent.run/recovered-lifecycle true})
+                     (transition run :succeeded at data))
+    :run/failed (if (= :queued (:agent.run/status run))
+                  (merge run data
+                         {:agent.run/status :failed
+                          :agent.run/updated-at at
+                          :agent.run/recovered-lifecycle true})
+                  (transition run :failed at data))
     :run/requeued (transition run :queued at data)
     :run/rejected (transition run :rejected at data)
     :run/cancelled (transition run :cancelled at data)

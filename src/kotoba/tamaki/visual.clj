@@ -128,6 +128,34 @@
        :image/width (Long/parseLong width)
        :image/height (Long/parseLong height)})))
 
+(defn evaluate-observatory
+  "Pure decision logic for Observatory visual health: given CoreGraphics canvas
+  metrics and lower-cased OCR text, return the verdict map (:visual/status,
+  :visual/findings, :visual/suggested-issue). This is the highest
+  decision-density part of the visual feedback loop (it decides :healthy vs
+  :degraded and drives issue prioritization), so it is kept free of process
+  execution and IO to make it deterministically testable without mocking
+  screenshots, OCR, or subprocesses."
+  [metrics text]
+  (let [findings (cond-> []
+                   (< (:canvas/stddev metrics) 8.0)
+                   (conj "3D canvas region appears blank or lacks grid contrast")
+                   (not (str/includes? text "tamaki observatory"))
+                   (conj "Observatory title was not recognized")
+                   (not-every? #(str/includes? text %)
+                               ["codex" "claude" "grok"])
+                   (conj "One or more provider usage cards are not visible")
+                   (not (str/includes? text "activity"))
+                   (conj "Live activity panel was not recognized"))
+        degraded? (seq findings)]
+    {:visual/status (if degraded? :degraded :healthy)
+     :visual/findings findings
+     :visual/suggested-issue
+     (if degraded?
+       (str "Restore Observatory visual health: "
+            (str/join "; " findings))
+       "")}))
+
 (defn analyze! [project capture]
   (if-not (= :captured (:visual/status capture))
     capture
@@ -136,26 +164,8 @@
             ocr (execute-with-timeout
                  ["swift" "-e" ocr-script (:visual/path capture)]
                  project 20)
-            text (str/lower-case (:out ocr))
-            findings (cond-> []
-                       (< (:canvas/stddev metrics) 8.0)
-                       (conj "3D canvas region appears blank or lacks grid contrast")
-                       (not (str/includes? text "tamaki observatory"))
-                       (conj "Observatory title was not recognized")
-                       (not-every? #(str/includes? text %)
-                                   ["codex" "claude" "grok"])
-                       (conj "One or more provider usage cards are not visible")
-                       (not (str/includes? text "activity"))
-                       (conj "Live activity panel was not recognized"))
-            degraded? (seq findings)]
-        (merge capture metrics
-               {:visual/status (if degraded? :degraded :healthy)
-                :visual/findings findings
-                :visual/suggested-issue
-                (if degraded?
-                  (str "Restore Observatory visual health: "
-                       (str/join "; " findings))
-                  "")}))
+            text (str/lower-case (:out ocr))]
+        (merge capture metrics (evaluate-observatory metrics text)))
       (catch Exception error
         (assoc capture :visual/status :analysis-failed
                :visual/error (.getMessage error))))))

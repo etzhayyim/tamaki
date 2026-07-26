@@ -29,6 +29,14 @@
     (is (= 1 (:agent.run/attempt leased)))
     (is (thrown? Exception (model/transition run :succeeded 1002 {})))))
 
+(deftest fold-recovers-legacy-terminal-event-without-weakening-transition
+  (let [run (model/agent-run {:goal "legacy consultation"} 1000)
+        events [(model/event run :run/submitted 1000 {:run run})
+                (model/event run :run/succeeded 1001 {:legacy true})]
+        folded (get (model/fold-events events) (:agent.run/id run))]
+    (is (= :succeeded (:agent.run/status folded)))
+    (is (true? (:agent.run/recovered-lifecycle folded)))))
+
 (deftest event-fold-and-resume
   (let [run (assoc (model/agent-run {:goal "fix it"} 1000)
                    :agent.run/id "run-1")

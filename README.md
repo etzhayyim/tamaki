@@ -4,6 +4,17 @@
 not reimplement the existing runtimes; it gives them one `AgentRun` identity,
 append-only event history, state machine, and operator surface.
 
+Tamaki models the complete system as an artificial organism. In this model an
+Actor is a durable role with an objective and policy, an AgentRun is one
+bounded execution created to perform that role, and `codex`, `claude`, or
+`grok` are replaceable runner profiles rather than Actor names. See
+[Artificial organism model](docs/artificial-organism.md) and
+[ADR-0001](docs/adr/0001-artificial-organism-agent-actor-runner-model.md).
+Each Tamaki individual has a maximum 30-day external lease. Its continuity is
+the governed transmission of genome, epigenome, and consent-scoped memes to a
+human-approved successor—not indefinite process survival. See
+[ADR-0002](docs/adr/0002-finite-relational-lineage-and-wellbecoming.md).
+
 ```text
 manimani / itonami
         │ submit AgentRun
@@ -140,7 +151,58 @@ store as the AgentRun. Successful integration marks the Radicle issue solved.
 ## Persistent growth loop
 
 An improvement campaign repeats the Radicle delivery cycle while keeping every
-cycle bounded and independently auditable:
+cycle bounded and independently auditable.
+
+### EDN LoopSpec registry (preferred)
+
+Loops are registered as EDN, not hardcoded in the supervisor or ad-hoc shell.
+Drop a file under `loops/` (or any directory on `TAMAKI_LOOPS_DIR` /
+`TAMAKI_LOOPS_PATH`, or `<cwd>/.tamaki/loops`, `~/.config/tamaki/loops`):
+
+```clojure
+;; loops/toshokan-maturity.edn
+{:loop/id :toshokan/maturity
+ :loop/enabled true
+ :loop/objective "さらに成熟度を向上: expand public-domain coverage..."
+ :loop/project "orgs/kotoba-lang/toshokan"
+ :loop/workspace-env "COM_JUNKAWASAKI_ROOT"  ; resolve project relative to this
+ :loop/continuous true
+ :loop/interval-ms 900000
+ :loop/max-failures 4
+ :loop/auto-approve true
+ :loop/runners ["codex" "claude" "claude-zai" "grok"]}
+```
+
+```sh
+# Discover registered loops and any matching active campaign
+bin/tamaki loop list
+
+# Validate / ensure / run from the EDN registration
+bin/tamaki loop validate loops/toshokan-maturity.edn
+bin/tamaki loop ensure --spec loops/toshokan-maturity.edn
+bin/tamaki loop ensure-all              # every enabled LoopSpec
+bin/tamaki loop ensure-all --dry-run    # plan only
+bin/tamaki loop tick <loop-id>
+bin/tamaki loop run <loop-id>
+bin/tamaki loop status
+```
+
+Shipped registrations:
+
+| File | Id | Role |
+|------|----|------|
+| `loops/revenue-growth.edn` | `:tamaki/revenue-growth` | default resident supervisor loop |
+| `loops/toshokan-maturity.edn` | `:toshokan/maturity` | 15m continuous toshokan maturity / coverage |
+
+`bin/tamaki-supervisor` loads `TAMAKI_LOOP_SPEC` (default
+`loops/revenue-growth.edn`) instead of baking the objective string into the
+shell script. Set `TAMAKI_EXTRA_LOOP_SPEC` explicitly to ensure an additional
+registration; it is empty by default because an ensured campaign still needs
+its own resident `loop run` process. CLI flags and env vars remain overrides on
+top of the EDN base. Campaigns store `:tamaki.loop/spec-id` so objective prose
+can change without forking a second campaign.
+
+### Ad-hoc CLI (still supported)
 
 ```sh
 bin/tamaki loop start \
@@ -153,6 +215,7 @@ bin/tamaki loop start \
 bin/tamaki loop start \
   --project "$PWD" \
   --objective "discover and resolve the highest-leverage maturity issue" \
+  --organism-name Hikari \
   --runners codex,claude,claude-zai,grok \
   --continuous --auto-approve --interval-ms 900000
 
@@ -173,6 +236,12 @@ breaker remains active. `--runners` rotates cycles deterministically through
 the named Tamaki profiles, so every provider receives the same durable
 run/lease/activity/usage and review lifecycle.
 
+`--organism-name` records a named finite individual such as `Tamaki Hikari`.
+Its loop lease expires after at most 30 days even with `--continuous`.
+`--organism-generation` and `--organism-parent` record lineage. Supplying these
+options creates identity metadata only; it does not bypass the separately
+reviewed, human-approved succession protocol.
+
 Before execution, each cycle reads the open Radicle backlog, extracts
 `Blocked by: <issue-id>` and `Acceptance: <criterion>` metadata, rejects
 dependency cycles, and ranks only unblocked work. The deterministic leverage
@@ -182,6 +251,39 @@ and current WIP pressure. Selection inputs and ranking are durable
 review of the resulting patch; integration is attempted only after it passes
 the criteria without changing the tree. `:effect/measured` records the
 before/after operational signal so later cycles can respond to the feedback.
+
+## Revenue control plane
+
+Tamaki treats commercial outcomes as durable facts rather than agent prose.
+Private targets live in the gitignored `actors/revenue-targets.edn`; initialize
+it from the illustrative public template, then record a periodic observation
+from an approved analytics or accounting export:
+
+```sh
+cp examples/revenue-targets.example.edn actors/revenue-targets.edn
+cp examples/revenue-observation.edn /tmp/revenue-week.edn
+# Fill the stocks, period flows, costs, and confidence with observed values.
+bin/tamaki kpi observe --file /tmp/revenue-week.edn
+bin/tamaki kpi status
+```
+
+The control plane projects traffic, qualified leads, conversations, proposals,
+won and active customers, MRR, and cash as stocks. Lead creation, activation,
+wins, churn, experiments, accepted patches, model/agent cost, operating cost,
+and MRR change are period flows. Its North Star is:
+
+```text
+risk-adjusted incremental MRR
+= delta MRR * confidence
+ - churn-risk MRR - operational cost - agent cost
+```
+
+Target attainment produces a bounded `0..1` control score. Revenue gap,
+experiment cadence, churn, confidence, and cost become active-inference
+signals for Radicle Issue selection. Observed business pressure may increase
+actor capacity within its declared min/max bounds. Missing KPI data stays
+`:unobserved`: it creates prioritization pressure to instrument the system but
+does not by itself scale the actor pool.
 
 ## Dogfood
 
@@ -231,3 +333,57 @@ bb test
 clojure -M:test
 bin/tamaki doctor
 ```
+
+## Governed self-evolution
+
+Radicle is the source of truth for both normal delivery and changes to
+Tamaki's own future behaviour. GitHub is a subordinate mirror used for CI,
+visibility, and optional secondary review:
+
+```text
+Radicle Issue
+  -> isolated evolution/* worktree
+  -> implementation
+  -> deterministic tests + durable-event replay
+  -> Radicle Patch
+  -> independent Radicle review
+  -> optional draft GitHub mirror PR + CI
+  -> canary
+  -> fitness comparison
+  -> voice approval
+  -> Radicle canonical promotion or rejection
+```
+
+The canonical tree is never the mutation workspace. Start a candidate only
+from a clean canonical checkout:
+
+```sh
+bin/tamaki evolve propose 93971f39ceb295136d4769bd4ce3a7a94ddeb030 \
+  --project "$PWD" \
+  --objective "Implement explicit active inference and safe self-evolution"
+```
+
+After committing inside the returned worktree, advance the durable lifecycle:
+
+```sh
+bin/tamaki evolve transition CANDIDATE :implemented --commit SHA
+bin/tamaki evolve verify CANDIDATE -- clojure -M:test
+bin/tamaki evolve open-patch CANDIDATE --title "evolve: active inference"
+# Optional GitHub mirror:
+bin/tamaki evolve open-pr CANDIDATE --title "evolve: active inference"
+bin/tamaki evolve transition CANDIDATE :reviewed --review-accepted true
+bin/tamaki evolve canary CANDIDATE -- clojure -M:test
+bin/tamaki evolve transition CANDIDATE :awaiting-human \
+  --fitness-before '{:tests 68 :assertions 202 :failures 1}' \
+  --fitness-after '{:tests 75 :assertions 226 :failures 0}'
+bin/tamaki evolve promote CANDIDATE
+```
+
+Promotion fails closed unless the candidate has a Radicle Issue and Patch,
+green tests, independent review, historical replay, a green canary, improved
+fitness, and explicit voice approval. A GitHub PR is deliberately not a
+promotion requirement.
+
+The resident supervisor defaults to `TAMAKI_SELF_EVOLUTION_MODE=radicle`.
+Setting it to `github` is an explicit fallback that retires active Radicle
+campaigns; it is not the normal operating mode.

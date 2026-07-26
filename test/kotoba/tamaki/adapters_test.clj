@@ -35,6 +35,11 @@
     (is (= ["--resume" "/tmp/project" "codex:"]
            (subvec (vec command) 1)))))
 
+(deftest command-existence-treats-input-as-data
+  (is (true? (adapters/command-exists? "sh")))
+  (is (false? (adapters/command-exists?
+               "tamaki-command-that-does-not-exist; true"))))
+
 (deftest process-environment-is-injectable
   (let [observed (atom nil)]
     (binding [adapters/*process-env* {"KC_LOOP_ID" "run-1"}
