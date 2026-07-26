@@ -40,3 +40,41 @@
               :actor/runners [{:runner :codex :weight 1}]}
              0 1000)]
     (is (:agent.run/require-done-no-edit? run))))
+
+(deftest detects-stale-runs-and-recommends-healing
+  (let [stale-run {:agent.run/id "run-x"
+                   :agent.run/status :running
+                   :agent.run/updated-at 0
+                   :agent.run/budget {:deadline-ms 1000}}
+        result (kaizen/evaluate [] [stale-run] 121000 200)]
+    (is (= :heal-stale-runs (:kaizen/decision result)))
+    (is (= ["run-x"] (get-in result [:kaizen/evidence :stale-runs])))))
+
+(deftest high-failure-pressure-throttles-spawn
+  (let [result (kaizen/evaluate
+                [(event :run/started 900)
+                 (event :run/failed 910)]
+                [] 1000 200)]
+    (is (= :throttle-spawn (:kaizen/decision result)))
+    (is (= 0.5 (get-in result [:kaizen/evidence :failure-pressure])))))
+
+(deftest low-throughput-after-several-starts-redirects-issue-selection
+  (let [result (kaizen/evaluate
+                [(event :run/started 900)
+                 (event :run/started 910)
+                 (event :run/started 920)
+                 (event :run/started 930)]
+                [] 1000 200)]
+    (is (= :redirect-issue-selection (:kaizen/decision result)))
+    (is (= 0.0 (get-in result [:kaizen/evidence :start->patch])))))
+
+(deftest no-patches-from-a-single-start-recommends-pruning
+  (let [result (kaizen/evaluate
+                [(event :run/started 900)]
+                [] 1000 200)]
+    (is (= :prune-no-change-loop (:kaizen/decision result)))))
+
+(deftest idle-window-with-no-signal-recommends-observation
+  (let [result (kaizen/evaluate [] [] 1000 200)]
+    (is (= :observe (:kaizen/decision result)))
+    (is (zero? (:kaizen/score result)))))
