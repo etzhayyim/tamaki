@@ -7,7 +7,8 @@
             [kotoba.tamaki.intelligence-test]
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.runners-test]
-            [kotoba.tamaki.store-test])
+            [kotoba.tamaki.store-test]
+            [kotoba.tamaki.visual-test])
   (:gen-class))
 
 (defn run [_]
@@ -18,7 +19,8 @@
                                'kotoba.tamaki.loop-test
                                'kotoba.tamaki.intelligence-test
                                'kotoba.tamaki.runners-test
-                               'kotoba.tamaki.store-test)]
+                               'kotoba.tamaki.store-test
+                               'kotoba.tamaki.visual-test)]
     (when (pos? (+ (:fail result) (:error result)))
       (throw (ex-info "Tamaki tests failed" result)))
     result))

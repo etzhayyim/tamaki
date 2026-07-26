@@ -9,7 +9,8 @@
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
-            [kotoba.tamaki.store :as store])
+            [kotoba.tamaki.store :as store]
+            [kotoba.tamaki.visual :as visual])
   (:gen-class))
 
 (defn now [] (System/currentTimeMillis))
@@ -601,9 +602,11 @@
                   (now))
         verdict-file (io/file (:agent.run/project worker) ".tamaki" "reviews"
                               (str (:agent.run/id reviewer) ".edn"))
+        verdict-path (str ".tamaki/reviews/" (.getName verdict-file))
         reviewer (update reviewer :agent.run/goal
-                         str "\nWrite exactly one EDN verdict to "
-                         (.getAbsolutePath verdict-file)
+                         str "\nUse the write_file tool with relative path "
+                         (pr-str verdict-path)
+                         " to write exactly one EDN verdict"
                          ": {:review/verdict :accepted|:rejected "
                          ":review/commit \"COMMIT\" :review/evidence [\"...\"]}. "
                          "Use :accepted only if every criterion passes.")]
@@ -645,9 +648,18 @@
           project (:tamaki.loop/project campaign)
           runner-id (agent-loop/runner-for-cycle campaign cycle)
           runner-profile (when runner-id (runners/profile runner-id))
+          visual-observation (try
+                               (visual/observe! project
+                                                (store/default-root)
+                                                (now))
+                               (catch Exception error
+                                 {:visual/status :analysis-failed
+                                  :visual/error (.getMessage error)}))
           title (str "ASI cycle " cycle ": " (:tamaki.loop/objective campaign))]
       (append-loop-event! campaign :loop/cycle-started
                           {:loop/cycle cycle :runner runner-id})
+      (append-loop-event! campaign :visual/observed
+                          {:loop/cycle cycle :visual visual-observation})
       (try
         (let [status (delivery/succeeded!
                       (delivery/execute! (delivery/git-status-command) project)
@@ -714,7 +726,13 @@
                                  (str/join "\n- " criteria)
                                  "\nBlockers: "
                                  (pr-str (get-in decision
-                                                 [:issue :issue/blockers])))
+                                                 [:issue :issue/blockers]))
+                                 "\nVisual observation: "
+                                 (pr-str
+                                  (select-keys visual-observation
+                                               [:visual/status :visual/path
+                                                :visual/findings
+                                                :visual/suggested-issue])))
                       :project project :mode :local
                       :model (or (:model runner-profile)
                                  (:tamaki.loop/model campaign))
