@@ -23,12 +23,12 @@ jobs:
       - uses: DeLaGuardo/setup-clojure@13.4
         with:
           cli: latest
-      - name: Verify issue-backed candidate
+      - name: Verify Radicle-backed candidate mirror
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          if ! printf '%s' "$PR_BODY" | grep -Eq '(Closes|Fixes|Refs) #[0-9]+'; then
-            echo "Evolution PR must reference its GitHub Issue." >&2
+          if ! printf '%s' "$PR_BODY" | grep -Eq 'Radicle-Issue: `?[0-9a-f]{40}`?'; then
+            echo "Evolution mirror PR must reference its full Radicle Issue ID." >&2
             exit 1
           fi
       - name: Deterministic tests

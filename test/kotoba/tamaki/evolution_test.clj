@@ -4,8 +4,9 @@
 
 (def proposed
   (evolution/candidate
-   {:issue 4 :objective "safe self evolution" :project "/repo"
-    :base-commit "abc123" :branch "evolution/issue-4"
+   {:issue "93971f39ceb295136d4769bd4ce3a7a94ddeb030"
+    :objective "safe self evolution" :project "/repo"
+    :base-commit "abc123" :branch "evolution/rad-93971f3"
     :worktree "/tmp/evolution-4"}
    1))
 
@@ -16,9 +17,10 @@
   (is (thrown? Exception
                (evolution/transition proposed :promoted 2 {}))))
 
-(deftest promotion-requires-github-pr-fitness-replay-canary-and-human-boundary
+(deftest promotion-requires-radicle-patch-fitness-replay-canary-and-human-boundary
   (let [ready (assoc proposed
                      :evolution/status :awaiting-human
+                     :evolution/patch-id "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                      :evolution/pr-url "https://github.com/kotoba-lang/tamaki/pull/5"
                      :evolution/tests-passed? true
                      :evolution/review-accepted? true
@@ -36,7 +38,9 @@
                     :evolution/canary-passed?]]
         (is (false? (evolution/promotion-ready? (assoc ready gate false))))))
     (is (false? (evolution/promotion-ready?
-                 (assoc ready :evolution/pr-url nil))))))
+                 (assoc ready :evolution/patch-id nil))))
+    (testing "GitHub mirror is optional"
+      (is (evolution/promotion-ready? (assoc ready :evolution/pr-url nil))))))
 
 (deftest durable-events-rebuild-candidates
   (let [events [(evolution/event proposed :evolution/proposed 1

@@ -9,7 +9,7 @@ interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-900000}"
 max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-4}"
 actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.edn}"
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
-self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-github}"
+self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
 
 cd "$tamaki_root"
 loop_id=""

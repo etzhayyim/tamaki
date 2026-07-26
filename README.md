@@ -234,27 +234,29 @@ bin/tamaki doctor
 
 ## Governed self-evolution
 
-Normal delivery remains Radicle-native. Changes to Tamaki's own future
-behaviour use a stricter GitHub-backed promotion boundary:
+Radicle is the source of truth for both normal delivery and changes to
+Tamaki's own future behaviour. GitHub is a subordinate mirror used for CI,
+visibility, and optional secondary review:
 
 ```text
-GitHub Issue
+Radicle Issue
   -> isolated evolution/* worktree
   -> implementation
   -> deterministic tests + durable-event replay
-  -> draft GitHub PR
-  -> independent review
+  -> Radicle Patch
+  -> independent Radicle review
+  -> optional draft GitHub mirror PR + CI
   -> canary
   -> fitness comparison
   -> voice approval
-  -> squash promotion or rejection
+  -> Radicle canonical promotion or rejection
 ```
 
 The canonical tree is never the mutation workspace. Start a candidate only
 from a clean canonical checkout:
 
 ```sh
-bin/tamaki evolve propose 4 \
+bin/tamaki evolve propose 93971f39ceb295136d4769bd4ce3a7a94ddeb030 \
   --project "$PWD" \
   --objective "Implement explicit active inference and safe self-evolution"
 ```
@@ -264,6 +266,8 @@ After committing inside the returned worktree, advance the durable lifecycle:
 ```sh
 bin/tamaki evolve transition CANDIDATE :implemented --commit SHA
 bin/tamaki evolve verify CANDIDATE -- clojure -M:test
+bin/tamaki evolve open-patch CANDIDATE --title "evolve: active inference"
+# Optional GitHub mirror:
 bin/tamaki evolve open-pr CANDIDATE --title "evolve: active inference"
 bin/tamaki evolve transition CANDIDATE :reviewed --review-accepted true
 bin/tamaki evolve canary CANDIDATE -- clojure -M:test
@@ -273,11 +277,11 @@ bin/tamaki evolve transition CANDIDATE :awaiting-human \
 bin/tamaki evolve promote CANDIDATE
 ```
 
-Promotion fails closed unless the candidate has a GitHub Issue and PR, green
-tests, independent review, historical replay, a green canary, improved fitness,
-and explicit voice approval.
+Promotion fails closed unless the candidate has a Radicle Issue and Patch,
+green tests, independent review, historical replay, a green canary, improved
+fitness, and explicit voice approval. A GitHub PR is deliberately not a
+promotion requirement.
 
-The resident supervisor defaults to `TAMAKI_SELF_EVOLUTION_MODE=github`.
-At startup it durably completes active legacy self-modification campaigns for
-the Tamaki checkout, so a Radicle patch cannot bypass this boundary. Set the
-mode to `radicle` only when intentionally operating the legacy loop.
+The resident supervisor defaults to `TAMAKI_SELF_EVOLUTION_MODE=radicle`.
+Setting it to `github` is an explicit fallback that retires active Radicle
+campaigns; it is not the normal operating mode.

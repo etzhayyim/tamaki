@@ -40,7 +40,7 @@
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
-       "  tamaki evolve propose|status|transition|open-pr|promote ...\n"
+       "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -196,14 +196,14 @@
 
 (defn evolve-propose!
   [{:keys [positional options]}]
-  (let [issue (parse-long (second positional))
+  (let [issue (second positional)
         project (or (:project options) (.getAbsolutePath (io/file ".")))
         objective (:objective options)]
-    (when-not (pos-int? issue)
-      (throw (ex-info "evolve propose requires a GitHub issue number" {})))
+    (when-not (evolution/radicle-id? issue)
+      (throw (ex-info "evolve propose requires a full Radicle issue ID" {})))
     (delivery/succeeded!
-     (delivery/execute! ["gh" "issue" "view" (str issue)] project)
-     "GitHub evolution issue lookup")
+     (delivery/execute! (delivery/issue-show-command issue) project)
+     "Radicle evolution issue lookup")
     (let [status (delivery/succeeded!
                   (delivery/execute! (delivery/git-status-command) project)
                   "evolution clean-tree check")]
@@ -215,11 +215,12 @@
                     "evolution base commit")
                    :out str/trim)
           timestamp (now)
-          branch (str "evolution/issue-" issue "-" timestamp)
+          issue-short (subs issue 0 7)
+          branch (str "evolution/rad-" issue-short "-" timestamp)
           worktree (.getAbsolutePath
                     (io/file (.getParentFile (io/file project))
                              (str ".tamaki-" (.getName (io/file project))
-                                  "-evolution-" issue "-" timestamp)))
+                                  "-evolution-" issue-short "-" timestamp)))
           created (delivery/execute!
                    ["git" "-C" project "worktree" "add" "-b"
                     branch worktree base]
@@ -237,6 +238,7 @@
 (defn parse-evolution-evidence [options]
   (cond-> {}
     (:commit options) (assoc :evolution/commit (:commit options))
+    (:patch-id options) (assoc :evolution/patch-id (:patch-id options))
     (:pr-url options) (assoc :evolution/pr-url (:pr-url options))
     (:tests-passed options) (assoc :evolution/tests-passed?
                                    (= "true" (:tests-passed options)))
@@ -265,6 +267,30 @@
       (print-edn next-candidate)
       0)))
 
+(defn evolve-open-patch!
+  [{:keys [positional options]}]
+  (let [candidate (evolution-candidate! (second positional))
+        worktree (:evolution/worktree candidate)
+        title (or (:title options)
+                  (str "evolve: " (:evolution/objective candidate)))]
+    (when-not (contains? #{:tested :reviewed :canary :awaiting-human}
+                         (:evolution/status candidate))
+      (throw (ex-info "Radicle patch requires a tested evolution candidate"
+                      {:status (:evolution/status candidate)})))
+    (let [result (delivery/succeeded!
+                  (delivery/execute! (delivery/patch-create-command title)
+                                     worktree)
+                  "Radicle evolution patch creation")
+          patch-id (delivery/output-id result)
+          evidence {:evolution/patch-id patch-id
+                    :evolution/authority :radicle}]
+      (when-not (evolution/radicle-id? patch-id)
+        (throw (ex-info "Radicle did not return a full patch ID"
+                        {:output (:out result) :error (:err result)})))
+      (append-evolution! candidate :evolution/evidence {:evidence evidence})
+      (print-edn (merge candidate evidence))
+      0)))
+
 (defn evolve-open-pr!
   [{:keys [positional options]}]
   (let [candidate (evolution-candidate! (second positional))
@@ -272,10 +298,11 @@
         branch (:evolution/branch candidate)
         title (or (:title options)
                   (str "evolve: " (:evolution/objective candidate)))
-        issue (:evolution/issue candidate)]
+        issue (:evolution/issue candidate)
+        patch-id (:evolution/patch-id candidate)]
     (when-not (contains? #{:tested :reviewed :canary :awaiting-human}
                          (:evolution/status candidate))
-      (throw (ex-info "PR requires a tested evolution candidate"
+      (throw (ex-info "GitHub mirror PR requires a tested evolution candidate"
                       {:status (:evolution/status candidate)})))
     (delivery/succeeded!
      (delivery/execute! ["git" "push" "-u" "origin" branch] worktree)
@@ -285,7 +312,9 @@
                    ["gh" "pr" "create" "--draft" "--title" title
                     "--body"
                     (str "Evolution candidate `" (:evolution/id candidate)
-                         "`.\n\nCloses #" issue
+                         "`.\n\nRadicle-Issue: `" issue "`"
+                         (when patch-id
+                           (str "\nRadicle-Patch: `" patch-id "`"))
                          "\n\nPromotion remains gated by tests, independent "
                          "review, historical replay, canary, and voice approval.")
                     "--head" branch]
@@ -367,19 +396,40 @@
                       {:candidate candidate})))
     (let [{:keys [decision]}
           (supervisor/consult!
-           {:title "Tamaki self-evolution promotion"
+           {:title "Tamaki Radicle self-evolution promotion"
             :summary (str "Candidate " (:evolution/id candidate)
                           " passed tests, review, replay and canary.")
-            :action (str "Merge " (:evolution/pr-url candidate))
+            :action (str "Accept and integrate Radicle patch "
+                         (:evolution/patch-id candidate))
             :impact "Changes Tamaki's own future behavior."
             :voice? true})]
       (if (= :approved decision)
         (do
           (delivery/succeeded!
            (delivery/execute!
-            ["gh" "pr" "merge" (:evolution/pr-url candidate) "--squash"]
-            (:evolution/worktree candidate))
-           "evolution PR promotion")
+            (delivery/patch-accept-command
+             (:evolution/patch-id candidate)
+             "Tamaki evolution gates passed: tests, replay, review, canary, fitness and HIL.")
+            (:evolution/project candidate))
+           "Radicle evolution patch acceptance")
+          (delivery/succeeded!
+           (delivery/execute! (delivery/git-switch-command "main")
+                              (:evolution/project candidate))
+           "Radicle canonical branch selection")
+          (delivery/succeeded!
+           (delivery/execute!
+            (delivery/git-merge-patch-command (:evolution/patch-id candidate))
+            (:evolution/project candidate))
+           "Radicle evolution patch integration")
+          (delivery/succeeded!
+           (delivery/execute! (delivery/push-canonical-command "main")
+                              (:evolution/project candidate))
+           "Radicle canonical promotion")
+          (delivery/succeeded!
+           (delivery/execute!
+            (delivery/issue-solve-command (:evolution/issue candidate))
+            (:evolution/project candidate))
+           "Radicle evolution issue resolution")
           (append-evolution! candidate :evolution/transition
                              {:status :promoted
                               :evidence {:hil/decision decision}})
@@ -408,10 +458,11 @@
     "transition" (evolve-transition! parsed)
     "verify" (evolve-verify! parsed)
     "canary" (evolve-canary! parsed)
+    "open-patch" (evolve-open-patch! parsed)
     "open-pr" (evolve-open-pr! parsed)
     "promote" (evolve-promote! parsed)
     (throw (ex-info
-            "Usage: tamaki evolve propose|status|transition|verify|open-pr|canary|promote"
+            "Usage: tamaki evolve propose|status|transition|verify|open-patch|open-pr|canary|promote"
             {}))))
 
 (defn submit!

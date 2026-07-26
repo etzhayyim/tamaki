@@ -19,6 +19,8 @@
     <string>codex,claude,claude-zai,grok</string>
     <key>TAMAKI_SUPERVISOR_INTERVAL_MS</key>
     <string>900000</string>
+    <key>TAMAKI_SELF_EVOLUTION_MODE</key>
+    <string>radicle</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

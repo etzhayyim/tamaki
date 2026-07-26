@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.evolution
-  "Fail-closed lifecycle for GitHub-backed self-evolution candidates."
+  "Fail-closed lifecycle for Radicle-primary self-evolution candidates.
+  GitHub is an optional mirror for CI, visibility, and secondary review."
   (:require [clojure.string :as str]))
 
 (def statuses
@@ -17,20 +18,24 @@
    :rejected #{}})
 
 (defn candidate-id [issue now-ms]
-  (str "evolution-gh-" issue "-" now-ms))
+  (str "evolution-rad-" (subs issue 0 7) "-" now-ms))
+
+(defn radicle-id? [value]
+  (boolean (and (string? value) (re-matches #"[0-9a-f]{40}" value))))
 
 (defn candidate
   [{:keys [issue objective project base-commit branch worktree]} now-ms]
-  (when-not (and (pos-int? issue)
+  (when-not (and (radicle-id? issue)
                  (not (str/blank? objective))
                  (not (str/blank? project))
                  (not (str/blank? base-commit))
                  (not (str/blank? branch))
                  (not (str/blank? worktree)))
-    (throw (ex-info "Evolution candidate requires GitHub issue, objective, base, branch and worktree"
+    (throw (ex-info "Evolution candidate requires Radicle issue, objective, base, branch and worktree"
                     {:issue issue :project project})))
   {:evolution/version 1
    :evolution/id (candidate-id issue now-ms)
+   :evolution/authority :radicle
    :evolution/issue issue
    :evolution/objective objective
    :evolution/project project
@@ -65,8 +70,9 @@
 
 (defn promotion-ready? [candidate]
   (and (= :awaiting-human (:evolution/status candidate))
-       (pos-int? (:evolution/issue candidate))
-       (not (str/blank? (:evolution/pr-url candidate)))
+       (= :radicle (:evolution/authority candidate))
+       (radicle-id? (:evolution/issue candidate))
+       (radicle-id? (:evolution/patch-id candidate))
        (:evolution/tests-passed? candidate)
        (:evolution/review-accepted? candidate)
        (:evolution/replay-passed? candidate)
