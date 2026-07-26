@@ -59,3 +59,21 @@
           (content/collect
            {:reaction/id :missing
             :reaction/source "/path/that/does/not/exist.edn"})))))
+
+(deftest collector-maps-provider-facts-without-provider-coupling
+  (let [file (java.io.File/createTempFile "tamaki-reaction-" ".edn")]
+    (spit file (pr-str {:video-id "v1"
+                        :observed-at 10
+                        :analytics {:views 20 :likes 3}}))
+    (let [result
+          (content/collect
+           {:reaction/id :example/youtube
+            :reaction/content-id :example
+            :reaction/channel :youtube
+            :reaction/source (.getPath file)
+            :reaction/artifact-id-path [:video-id]
+            :reaction/mappings {:views [:analytics :views]
+                                :likes [:analytics :likes]}})]
+      (is (= :observed (:collector/status result)))
+      (is (= "v1" (get-in result [:observation :artifact/id])))
+      (is (= 20 (get-in result [:observation :metrics :views]))))))

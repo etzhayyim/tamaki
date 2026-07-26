@@ -237,7 +237,18 @@
 
 (defn reconcile-actor!
   [spec execute?]
-  (let [before (actor-status spec)
+  (let [content-id (:actor/content-id spec)
+        feedback (when content-id (content/status (events) content-id))
+        spec (if-let [latest (:latest feedback)]
+               (update spec :actor/objective
+                       str
+                       "\nLatest measured content feedback: "
+                       (pr-str (select-keys latest
+                                            [:channel :artifact/id :signals
+                                             :next-action]))
+                       ". Use this evidence when selecting the next issue.")
+               spec)
+        before (actor-status spec)
         existing-count (count (actor/actor-runs spec
                                                 (remove nil? (vals (runs)))))
         actor-token (str/replace (str (:actor/id spec)) #"[^A-Za-z0-9]+" "-")]
