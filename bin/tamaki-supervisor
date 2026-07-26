@@ -12,6 +12,7 @@ interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-}"
 max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-}"
 actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.edn}"
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
+bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
 self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
 # Optional second continuous loop. Empty by default because merely ensuring a
 # campaign without a resident runner would present inactive work as active.
@@ -65,10 +66,15 @@ else
 fi
 
 actor_pid=""
+bridge_pid=""
 cleanup() {
   if [[ -n "$actor_pid" ]] && kill -0 "$actor_pid" 2>/dev/null; then
     kill "$actor_pid" 2>/dev/null || true
     wait "$actor_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$bridge_pid" ]] && kill -0 "$bridge_pid" 2>/dev/null; then
+    kill "$bridge_pid" 2>/dev/null || true
+    wait "$bridge_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -95,6 +101,14 @@ trap cleanup EXIT INT TERM
   done
 ) &
 actor_pid=$!
+
+(
+  while true; do
+    bin/tamaki bridge reconcile --execute || true
+    sleep "$bridge_interval_seconds"
+  done
+) &
+bridge_pid=$!
 
 if [[ "$self_evolution_mode" == "github" ]]; then
   wait "$actor_pid"

@@ -1,0 +1,14 @@
+{:actor/id :bridge/radicle-github
+ :actor/type :tamaki/reconciliation
+ :actor/project "."
+ :actor/objective
+ "Keep GitHub CI and review evidence aligned with Radicle-primary evolution candidates without granting GitHub promotion authority."
+ :actor/capabilities #{:radicle :github :ci-observation :review-observation}
+ :actor/governor :tamaki/radicle-sovereignty
+ :actor/hil-policy {:mirror-pr-create :autonomous
+                    :ci-observe :autonomous
+                    :promote :voice-required
+                    :change-authority :blocked}
+ :actor/scale {:min 0 :desired 0 :max 1
+               :scale-down-after-ms 300000}
+ :actor/runners [{:runner :codex :weight 1}]}

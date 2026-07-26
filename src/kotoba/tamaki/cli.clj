@@ -7,6 +7,7 @@
             [kotoba.tamaki.active-inference :as active-inference]
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.business :as business]
+            [kotoba.tamaki.bridge :as bridge]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
@@ -46,6 +47,7 @@
        "  tamaki kpi status [--targets FILE]\n"
        "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
+       "  tamaki bridge status|reconcile [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -1607,6 +1609,66 @@
               "Usage: tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ..."
               {})))))
 
+(defn bridge!
+  [{:keys [positional options]}]
+  (let [action (first positional)
+        candidates (evolution/candidates (events))
+        plan (bridge/plan candidates)]
+    (case action
+      "status" (do (print-edn {:bridge/actor :bridge/radicle-github
+                                :bridge/authority :radicle
+                                :bridge/gaps plan})
+                   0)
+      "reconcile"
+      (if-not (:execute options)
+        (do (print-edn {:bridge/actor :bridge/radicle-github
+                        :bridge/dry-run true :bridge/gaps plan})
+            0)
+        (let [results
+              (mapv
+               (fn [{:bridge/keys [action candidate pr-url] :as gap}]
+                 (let [candidate-state (get candidates candidate)]
+                   (case action
+                     :open-draft-pr
+                     (do
+                       (evolve-open-pr!
+                        {:positional ["open-pr" candidate]
+                         :options {:title
+                                   (str "mirror: "
+                                        (:evolution/objective candidate-state))}})
+                       (assoc gap :bridge/result :opened))
+                     :observe-github
+                     (let [result
+                           (delivery/execute!
+                            ["gh" "pr" "view" pr-url
+                             "--json" "state,statusCheckRollup,reviews"]
+                            (:evolution/project candidate-state))
+                           evidence (bridge/github-observation result (now))]
+                       (append-evolution! candidate-state :evolution/evidence
+                                          {:evidence evidence})
+                       (assoc gap :bridge/result
+                              (if (zero? (:exit result))
+                                :observed :observation-failed)))
+                     gap)))
+               plan)]
+          (store/append-event!
+           (store/default-root)
+           {:tamaki.event/version 1
+            :tamaki.event/id (str (random-uuid))
+            :tamaki.event/run "bridge::radicle-github"
+            :tamaki.event/parent nil
+            :tamaki.event/kind :bridge/reconciled
+            :tamaki.event/at (now)
+            :tamaki.event/data {:bridge/actor :bridge/radicle-github
+                                :bridge/gaps (count plan)
+                                :bridge/results results}})
+          (print-edn {:bridge/actor :bridge/radicle-github
+                      :bridge/reconciled results})
+          (if (every? #(not= :observation-failed (:bridge/result %))
+                      results)
+            0 1)))
+      (throw (ex-info "Usage: tamaki bridge status|reconcile [--execute]" {})))))
+
 (defn dispatch
   [args]
   (let [[command & rest] args
@@ -1635,6 +1697,7 @@
       "actor" (actor! parsed)
       "kpi" (kpi! parsed)
       "evolve" (evolve! parsed)
+      "bridge" (bridge! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

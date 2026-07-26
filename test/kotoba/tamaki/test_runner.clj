@@ -3,6 +3,7 @@
             [kotoba.tamaki.active-inference-test]
             [kotoba.tamaki.actor-test]
             [kotoba.tamaki.business-test]
+            [kotoba.tamaki.bridge-test]
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
             [kotoba.tamaki.delivery-test]
@@ -23,6 +24,7 @@
                                'kotoba.tamaki.active-inference-test
                                'kotoba.tamaki.actor-test
                                'kotoba.tamaki.business-test
+                               'kotoba.tamaki.bridge-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
                                'kotoba.tamaki.delivery-test
