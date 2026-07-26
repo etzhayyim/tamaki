@@ -43,6 +43,19 @@
     (is (= 1.0 (:business-pressure signals)))
     (is (zero? (:confidence signals)))))
 
+(deftest stale-observation-produces-stale-status-without-fabricated-kpis
+  (let [stale-observation (assoc observation :fresh? false)
+        events [(business/event stale-observation 1)]
+        summary (business/summary events targets)
+        signals (business/control-signals summary)]
+    (is (= :stale (:business/status summary)))
+    (is (= {} (:business/kpis summary)))
+    (is (= {} (:business/progress summary)))
+    (is (= 0.0 (:business/control-score summary)))
+    (testing "stale data raises pressure like an unobserved baseline instead of reporting fabricated confidence"
+      (is (= 1.0 (:business-pressure signals)))
+      (is (zero? (:confidence signals))))))
+
 (deftest stock-flow-is-derived-only-from-durable-facts
   (let [dynamics (business/stock-flow [(business/event observation 1)]
                                       targets)]
