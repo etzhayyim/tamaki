@@ -81,6 +81,7 @@
      :running (count (filter #(contains? #{:leased :running :checkpointed}
                                          (:agent.run/status %)) active))
      :queued (count (filter #(= :queued (:agent.run/status %)) active))
+     :blocked (count (filter #(= :held (:agent.run/status %)) active))
      :spawn (max 0 delta)
      :cancel (if (neg? delta)
                (mapv :agent.run/id

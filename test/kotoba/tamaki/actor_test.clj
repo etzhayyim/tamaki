@@ -31,6 +31,7 @@
     (is (= 3 (:desired plan)))
     (is (= 1 (:queued plan)))
     (is (= 1 (:running plan)))
+    (is (zero? (:blocked plan)))
     (is (= 1 (:spawn plan)))
     (is (= :revenue/test (:agent.run/actor run-0)))
     (is (= "codex" (:agent.run/runner run-0)))))
