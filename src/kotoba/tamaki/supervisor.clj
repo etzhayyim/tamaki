@@ -45,11 +45,22 @@
     (store/append-event! root
                          (model/event run :run/submitted now {:run run}))
     (store/append-event! root
-                         (model/event run :supervisor/consulted (inc now)
+                         (model/event run :run/leased (inc now)
+                                      {:agent.run/worker
+                                       "tamaki-supervisor"}))
+    (store/append-event! root
+                         (model/event (assoc run :agent.run/status :leased)
+                                      :run/started (+ now 2)
+                                      {:agent.run/command
+                                       [:human-in-the-loop]}))
+    (store/append-event! root
+                         (model/event (assoc run :agent.run/status :running)
+                                      :supervisor/consulted (+ now 3)
                                       {:hil/request request
                                        :hil/decision decision}))
     (store/append-event! root
-                         (model/event run :run/succeeded (+ now 2)
+                         (model/event (assoc run :agent.run/status :running)
+                                      :run/succeeded (+ now 4)
                                       {:hil/decision decision}))
     {:run-id (:agent.run/id run) :decision decision}))
 
