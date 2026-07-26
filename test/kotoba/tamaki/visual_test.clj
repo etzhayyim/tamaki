@@ -81,3 +81,37 @@
                 "One or more provider usage cards are not visible; "
                 "Live activity panel was not recognized")
            (:visual/suggested-issue result)))))
+
+(deftest window-found-and-screencapture-succeeds-yields-a-screen-capture-image
+  (let [root (.toFile
+              (java.nio.file.Files/createTempDirectory
+               "tamaki-visual-test"
+               (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (with-redefs [kotoba.tamaki.delivery/execute!
+                  (fn [argv]
+                    (case (first argv)
+                      "swift" {:exit 0 :out "42\n" :err ""}
+                      "screencapture" (do (spit (last argv) "png-bytes")
+                                          {:exit 0 :out "" :err ""})
+                      "sips" {:exit 0 :out "" :err ""}
+                      {:exit 1 :out "" :err "unexpected command"}))]
+      (let [result (visual/capture! root (System/currentTimeMillis))]
+        (is (= :captured (:visual/status result)))
+        (is (= :screen-capture (:visual/source result)))
+        (is (= "42" (:visual/window-id result)))
+        (is (pos? (:visual/bytes result)))))))
+
+(deftest window-found-but-screencapture-failure-is-an-observable-nonfatal-state
+  (let [root (.toFile
+              (java.nio.file.Files/createTempDirectory
+               "tamaki-visual-test"
+               (make-array java.nio.file.attribute.FileAttribute 0)))]
+    (with-redefs [kotoba.tamaki.delivery/execute!
+                  (fn [argv]
+                    (if (= (first argv) "swift")
+                      {:exit 0 :out "7\n" :err ""}
+                      {:exit 1 :out "" :err "screen recording permission denied"}))]
+      (let [result (visual/capture! root (System/currentTimeMillis))]
+        (is (= :unavailable (:visual/status result)))
+        (is (= "screen recording permission denied"
+               (:visual/error result)))))))
