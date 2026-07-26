@@ -28,7 +28,8 @@
      (str "run-" now-ms "-" (subs normalized 0 8)))))
 
 (defn agent-run
-  [{:keys [id goal project source-project repo pin mode node model runner capabilities budget parent]
+  [{:keys [id goal project source-project repo pin mode node model runner
+           capabilities budget parent actor replica]
     :or {mode :local node :auto capabilities #{} budget {}}}
    now-ms]
   (when (str/blank? goal)
@@ -52,6 +53,8 @@
                              :test-timeout-ms 180000}
                             budget)
    :agent.run/parent parent
+   :agent.run/actor actor
+   :agent.run/replica replica
    :agent.run/status :queued
    :agent.run/created-at now-ms
    :agent.run/updated-at now-ms
@@ -83,6 +86,7 @@
   [run {:tamaki.event/keys [kind at data]}]
   (case kind
     :run/submitted (or run (:run data))
+    :run/configured (merge run data)
     :run/leased (transition run :leased at data)
     :run/started (transition run :running at data)
     :run/checkpointed (transition run :checkpointed at data)
@@ -99,8 +103,11 @@
   (reduce
    (fn [runs event]
      (let [id (:tamaki.event/run event)
-           current (get runs id)]
-       (assoc runs id (apply-event current event))))
+           current (get runs id)
+           next-run (apply-event current event)]
+       ;; Loop, actor and audit events share the durable event stream but are
+       ;; not AgentRuns. Never materialize them as nil run entries.
+       (if next-run (assoc runs id next-run) runs)))
    {}
    events))
 

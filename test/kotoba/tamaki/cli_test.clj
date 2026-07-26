@@ -38,6 +38,24 @@
                   (call ["consult" "CI confirmation" "--silent"]))))
       (is (false? (:voice? (second @requests)))))))
 
+(deftest supervisor-ensure-reuses-one-compatible-loop
+  (let [root (temp-root)
+        args ["loop" "ensure"
+              "--project" "/tmp/project"
+              "--objective" "operate continuously"
+              "--runners" "codex,claude"
+              "--continuous"]]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [first-id (:tamaki.loop/id (:value (call args)))
+            second-id (:tamaki.loop/id (:value (call args)))
+            active (filter #(= :active (:tamaki.loop/status %))
+                           (vals (cli/campaigns)))]
+        (is (= first-id second-id))
+        (is (= 1 (count active)))
+        (is (false? (:tamaki.loop/auto-approve (first active))))))))
+
 (deftest public-submit-status-and-agents
   (let [root (temp-root)]
     (with-redefs [store/default-root (constantly root)

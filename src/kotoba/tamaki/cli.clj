@@ -4,6 +4,7 @@
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [kotoba.tamaki.adapters :as adapters]
+            [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.intelligence :as intelligence]
@@ -24,6 +25,7 @@
        "  tamaki run <run-id>\n"
        "  tamaki status [run-id]\n"
        "  tamaki resume <run-id>\n"
+       "  tamaki cancel <run-id> [--reason TEXT]\n"
        "  tamaki agents [run-id]\n"
        "  tamaki runners\n"
        "  tamaki swarm <goal> --project PATH [--runners IDS] [--execute]\n"
@@ -35,6 +37,7 @@
        "  tamaki loop start|status|tick|run ...\n"
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
+       "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -78,7 +81,7 @@
 (defn print-edn [x]
   (pprint/pprint x))
 
-(declare execute-run! submit!)
+(declare execute-run! submit! require-run!)
 
 (defn consult!
   [{:keys [positional options]}]
@@ -101,6 +104,81 @@
   (let [transcript (str/join " " positional)
         goal (supervisor/voice-intent transcript)]
     (submit! (assoc parsed :positional [goal]))))
+
+(defn actor-status [spec]
+  (actor/reconcile-plan spec (remove nil? (vals (runs)))))
+
+(defn reconcile-actor!
+  [spec execute?]
+  (let [before (actor-status spec)
+        existing-count (count (actor/actor-runs spec
+                                                (remove nil? (vals (runs)))))
+        actor-token (str/replace (str (:actor/id spec)) #"[^A-Za-z0-9]+" "-")]
+    (doseq [run-id (:cancel before)
+            :let [run (run-by-id run-id)]]
+      (emit! run :run/cancelled {:actor/id (:actor/id spec)
+                                 :actor/reason :scale-down}))
+    (let [spawned
+          (mapv
+           (fn [offset]
+             (let [replica-index (+ existing-count offset)
+                   base (actor/replica-run spec replica-index (now))
+                   profile (runners/profile (:agent.run/runner base))
+                   run (assoc base :agent.run/model (:model profile))]
+               (emit! run :run/submitted
+                      {:run run :actor/id (:actor/id spec)
+                       :actor/replica replica-index})
+               run))
+           (range (:spawn before)))
+          executable
+          (when execute?
+            (->> (concat (:active before) spawned)
+                 (filter #(= :queued (:agent.run/status %)))
+                 (mapv
+                  (fn [run]
+                    (let [profile (runners/profile (:agent.run/runner run))
+                          configured
+                          {:agent.run/source-project (:agent.run/project run)
+                           :agent.run/project
+                           (runners/prepare-worktree!
+                            (:agent.run/project run)
+                            actor-token
+                            (str (:agent.run/runner run) "-"
+                                 (:agent.run/replica run)))
+                           :agent.run/model (:model profile)}]
+                      (emit! run :run/configured configured)
+                      (run-by-id (:agent.run/id run)))))))
+          results
+          (when (seq executable)
+            (->> executable
+                 (mapv (fn [run]
+                         (future
+                           {:run-id (:agent.run/id run)
+                            :runner (:agent.run/runner run)
+                            :exit (execute-run! run)})))
+                 (mapv deref)))
+          after (actor-status spec)]
+      (print-edn
+       (cond-> (assoc after
+                      :spawned
+                      (mapv #(select-keys
+                              % [:agent.run/id :agent.run/replica
+                                 :agent.run/runner :agent.run/model])
+                            spawned))
+         results (assoc :results results)))
+      (if (and results (some #(not (zero? (:exit %))) results)) 1 0))))
+
+(defn actor!
+  [{:keys [positional options]}]
+  (let [[action path] positional
+        spec (when path (actor/read-spec path))]
+    (case action
+      "validate" (do (print-edn spec) 0)
+      "status" (do (print-edn (actor-status spec)) 0)
+      "reconcile" (reconcile-actor! spec (:execute options))
+      (throw (ex-info
+              "Usage: tamaki actor validate|status|reconcile SPEC.edn"
+              {})))))
 
 (defn submit!
   [{:keys [positional options]}]
@@ -358,6 +436,17 @@
     (emit! run :run/requeued {:agent.run/resume-from (:agent.run/status run)})
     (execute-run! (run-by-id id))))
 
+(defn cancel!
+  [id reason]
+  (let [run (require-run! id)]
+    (when (model/terminal-statuses (:agent.run/status run))
+      (throw (ex-info "Terminal run cannot be cancelled"
+                      {:run-id id :status (:agent.run/status run)})))
+    (emit! run :run/cancelled
+           {:agent.run/cancel-reason (or reason "operator-requested")})
+    (print-edn (run-by-id id))
+    0))
+
 (defn agents!
   [root-id]
   (let [all (vals (runs))
@@ -578,6 +667,36 @@
     (append-loop-event! campaign :loop/started {:campaign campaign})
     (print-edn campaign)
     0))
+
+(defn ensure-loop!
+  "Return one canonical campaign for the requested supervisor configuration.
+  Stale active campaigns are durably completed instead of accumulating after
+  launchd restarts."
+  [{:keys [options]}]
+  (let [profiles (cond
+                   (:runners options) (runners/selected (:runners options))
+                   (:runner options) [(runners/profile (:runner options))]
+                   :else [])
+        expected-runners (mapv :id profiles)
+        active (->> (vals (campaigns))
+                    (filter #(= :active (:tamaki.loop/status %))))
+        compatible?
+        (fn [campaign]
+          (and (= (:project options) (:tamaki.loop/project campaign))
+               (= (:objective options) (:tamaki.loop/objective campaign))
+               (= expected-runners (:tamaki.loop/runners campaign))
+               (= (boolean (:auto-approve options))
+                  (:tamaki.loop/auto-approve campaign))))
+        canonical (last (sort-by :tamaki.loop/updated-at
+                                 (filter compatible? active)))]
+    (doseq [campaign active
+            :when (not= (:tamaki.loop/id campaign)
+                        (:tamaki.loop/id canonical))]
+      (append-loop-event! campaign :loop/completed
+                          {:reason :superseded-by-supervisor}))
+    (if canonical
+      (do (print-edn canonical) 0)
+      (start-loop! {:options options}))))
 
 (defn loop-status! [id]
   (if id
@@ -894,10 +1013,12 @@
   (let [[action id] positional]
     (case action
       "start" (start-loop! parsed)
+      "ensure" (ensure-loop! parsed)
       "status" (loop-status! id)
       "tick" (tick-loop! id)
       "run" (run-loop! id)
-      (throw (ex-info "Usage: tamaki loop start|status|tick|run ..." {})))))
+      (throw (ex-info "Usage: tamaki loop start|ensure|status|tick|run ..."
+                      {})))))
 
 (defn dispatch
   [args]
@@ -909,6 +1030,8 @@
       "run" (execute-run! (run-by-id (first (:positional parsed))))
       "status" (do (status! (first (:positional parsed))) 0)
       "resume" (resume! (first (:positional parsed)))
+      "cancel" (cancel! (first (:positional parsed))
+                         (get-in parsed [:options :reason]))
       "agents" (do (agents! (first (:positional parsed))) 0)
       "runners" (do (runners!) 0)
       "swarm" (swarm! parsed)
@@ -922,6 +1045,7 @@
       "loop" (loop! parsed)
       "consult" (consult! parsed)
       "voice" (or (voice! parsed) 0)
+      "actor" (actor! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

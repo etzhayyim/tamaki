@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.test-runner
   (:require [clojure.test :as test]
+            [kotoba.tamaki.actor-test]
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
             [kotoba.tamaki.delivery-test]
@@ -14,6 +15,7 @@
 
 (defn run [_]
   (let [result (test/run-tests 'kotoba.tamaki.model-test
+                               'kotoba.tamaki.actor-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
                                'kotoba.tamaki.delivery-test
