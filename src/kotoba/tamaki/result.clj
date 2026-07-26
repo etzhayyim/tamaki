@@ -19,9 +19,20 @@
                          (get-in % [:tamaki.event/data :patch/id])))
                 events)))
 
+(defn- produced
+  "Emit a :result/produced edge only when both endpoints exist."
+  [from to]
+  (when (and from to)
+    (edge from to :result/produced)))
+
 (defn result-graphs
   "One immutable graph per delivered patch. Natural-language activity is
-  deliberately ignored; only typed delivery/review/integration evidence enters."
+  deliberately ignored; only typed delivery/review/integration evidence enters.
+
+  Topology is delivery-shaped rather than a single linear chain: the source
+  path is issue -> commit -> Radicle patch, while GitHub mirror PR, independent
+  review, and integration each hang off the patch. Chaining review through a
+  GitHub PR would mis-attribute Radicle-authoritative review as a PR product."
   [events runs candidates]
   (let [run-by-id (into {} (map (juxt :agent.run/id identity)) runs)
         candidate-by-patch
@@ -55,7 +66,13 @@
                           (node :merge patch-id "Merged"))
                   nodes (vec (remove nil?
                                      [issue commit patch pr review merge]))
-                  chain (vec (remove nil? [issue commit patch pr review merge]))]
+                  edges (->> [(produced issue commit)
+                              (produced commit patch)
+                              (produced patch pr)
+                              (produced patch review)
+                              (produced patch merge)]
+                             (remove nil?)
+                             vec)]
               {:result/id (str "result/" patch-id)
                :result/run run-id
                :result/project
@@ -64,7 +81,4 @@
                :result/issue (:issue/id data)
                :result/patch patch-id
                :result/nodes nodes
-               :result/edges
-               (mapv (fn [[a b]]
-                       (edge a b :result/produced))
-                     (partition 2 1 chain))}))))))
+               :result/edges edges}))))))
