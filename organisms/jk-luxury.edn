@@ -1,0 +1,23 @@
+{:organism/id :tamaki/jk-luxury
+ :organism/org :jk-luxury
+ :organism/objective
+ "Cultivate trusted luxury experiences through network-awai while protecting rarity, reputation, customer dignity, and durable value."
+ :organism/responsibilities
+ #{:network-awai :luxury-experience :brand-trust :customer-dignity}
+ :organism/repos ["orgs/jk-luxury/*" "orgs/network-awai/*"]
+ :organism/state-root-env "TAMAKI_JK_LUXURY_STATE_ROOT"
+ :organism/actors-dir "organisms/jk-luxury/actors"
+ :organism/loops-dir "organisms/jk-luxury/loops"
+ :organism/governor :jk-luxury/brand-and-customer-trust
+ :organism/budget {:agent-concurrency 3 :token-budget-period :day}
+ :organism/authority
+ {:observe :autonomous
+  :issue-create :autonomous
+  :patch-create :autonomous
+  :integrate :approval-required
+  :brand-expression :voice-required
+  :customer-contact :voice-required
+  :price-change :voice-required
+  :publish :voice-required
+  :payment :voice-required}}
+

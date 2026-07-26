@@ -1,0 +1,24 @@
+{:organism/id :tamaki/gftdcojp
+ :organism/org :gftdcojp
+ :organism/objective
+ "Improve defensive cybersecurity capability, customer protection, recovery readiness, and sustainable business value."
+ :organism/responsibilities
+ #{:defensive-security :risk-reduction :detection :recovery :customer-protection}
+ :organism/repos ["orgs/gftdcojp/*"]
+ :organism/state-root-env "TAMAKI_GFTDCOJP_STATE_ROOT"
+ :organism/actors-dir "organisms/gftdcojp/actors"
+ :organism/loops-dir "organisms/gftdcojp/loops"
+ :organism/governor :gftdcojp/defensive-security
+ :organism/budget {:agent-concurrency 4 :token-budget-period :day}
+ :organism/authority
+ {:observe :autonomous
+  :issue-create :autonomous
+  :bounded-defensive-analysis :autonomous
+  :patch-create :autonomous
+  :integrate :approval-required
+  :credential-access :approval-required
+  :external-network-action :blocked
+  :exploit :blocked
+  :disclosure :voice-required
+  :customer-impacting-change :voice-required}}
+
