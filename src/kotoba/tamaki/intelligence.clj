@@ -73,10 +73,12 @@
    "The reviewed commit descends from the canonical base and is fast-forwardable"])
 
 (defn dynamics-signals [{:keys [failures max-failures active-runs open-issues]}]
-  {:feedback-pressure (normalize (/ (double failures)
-                                    (max 1.0 (double max-failures))))
-   :wip-pressure (normalize (/ (double active-runs) 4.0))
-   :urgency (normalize (/ (double open-issues) 10.0))})
+  ;; Telemetry can be absent during bootstrap or replay of older campaigns.
+  ;; Missing counts mean no observed pressure; the denominator remains guarded.
+  {:feedback-pressure (normalize (/ (double (or failures 0))
+                                    (max 1.0 (double (or max-failures 1)))))
+   :wip-pressure (normalize (/ (double (or active-runs 0)) 4.0))
+   :urgency (normalize (/ (double (or open-issues 0)) 10.0))})
 
 (defn effect [before after]
   {:effect/tests-delta (- (or (:tests after) 0) (or (:tests before) 0))
