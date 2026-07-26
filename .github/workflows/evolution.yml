@@ -13,6 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout local HIL dependency
+        uses: actions/checkout@v4
+        with:
+          repository: kotoba-lang/hil
+          path: hil
+      - name: Match the monorepo dependency layout
+        run: ln -s "$GITHUB_WORKSPACE/hil" ../hil
       - uses: DeLaGuardo/setup-clojure@13.4
         with:
           cli: latest
