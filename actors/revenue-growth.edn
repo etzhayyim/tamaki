@@ -1,0 +1,18 @@
+{:actor/id :revenue/growth-supervisor
+ :actor/type :cloud-itonami/isic-portfolio
+ :actor/project "."
+ :actor/objective "Increase sustainable revenue by resolving the highest-leverage unblocked issue across governed business actors."
+ :actor/capabilities #{:radicle :issue-triage :implementation :review :visual}
+ :actor/governor :tamaki/revenue-governor
+ :actor/hil-policy {:issue-create :autonomous
+                    :patch-create :autonomous
+                    :integrate :voice-required
+                    :external-effect :voice-required}
+ :actor/scale {:min 1 :desired 2 :max 8
+               :scale-up-on {:queue-depth 3 :blocker-count 2
+                             :business-pressure 0.65}
+               :scale-down-after-ms 300000}
+ :actor/runners [{:runner :codex :weight 3}
+                 {:runner :claude :weight 2}
+                 {:runner :claude-zai :weight 2}
+                 {:runner :grok :weight 1}]}

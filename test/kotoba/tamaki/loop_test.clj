@@ -59,7 +59,9 @@
       (let [recovered (loop/apply-event
                        failed
                        (loop/loop-event campaign kind 3 {}))]
-        (is (nil? (:tamaki.loop/last-error recovered)))))))
+        (is (nil? (:tamaki.loop/last-error recovered)))
+        (when (contains? #{:loop/cycle-integrated :loop/cycle-no-change} kind)
+          (is (zero? (:tamaki.loop/failures recovered))))))))
 
 (deftest completion-records-stop-reason-and-clears-in-flight-cycle
   (let [campaign (assoc (loop/campaign {:objective "operate safely"
@@ -83,3 +85,16 @@
                                  :project "/repo"
                                  field value}
                                 1)))))
+
+(deftest continuous-campaign-rotates-providers-without-cycle-expiry
+  (let [campaign (loop/campaign
+                  {:objective "continuously improve"
+                   :project "/repo"
+                   :runners ["codex" "claude" "claude-zai" "grok"]
+                   :continuous true
+                   :max-cycles 1}
+                  1)]
+    (is (nil? (loop/stop-reason
+               (assoc campaign :tamaki.loop/cycles 1000))))
+    (is (= ["codex" "claude" "claude-zai" "grok" "codex"]
+           (mapv #(loop/runner-for-cycle campaign %) (range 1 6))))))

@@ -21,10 +21,15 @@
 (defn run-id
   ([now-ms] (run-id now-ms (str (random-uuid))))
   ([now-ms entropy]
-   (str "run-" now-ms "-" (subs (str/replace entropy #"-" "") 0 8))))
+   (let [normalized (str/replace (str entropy) #"-" "")]
+     (when (< (count normalized) 8)
+       (throw (ex-info "Run ID entropy must contain at least 8 characters"
+                       {:entropy entropy :minimum-length 8})))
+     (str "run-" now-ms "-" (subs normalized 0 8)))))
 
 (defn agent-run
-  [{:keys [id goal project repo pin mode node model capabilities budget parent]
+  [{:keys [id goal project source-project repo pin mode node model runner
+           capabilities budget parent actor replica]
     :or {mode :local node :auto capabilities #{} budget {}}}
    now-ms]
   (when (str/blank? goal)
@@ -33,11 +38,13 @@
    :agent.run/id (or id (run-id now-ms))
    :agent.run/goal goal
    :agent.run/project project
+   :agent.run/source-project source-project
    :agent.run/repo repo
    :agent.run/pin pin
    :agent.run/mode mode
    :agent.run/node node
    :agent.run/model model
+   :agent.run/runner runner
    :agent.run/required-capabilities (set capabilities)
    :agent.run/budget (merge {:max-turns 12
                              :max-tool-calls 30
@@ -46,6 +53,8 @@
                              :test-timeout-ms 180000}
                             budget)
    :agent.run/parent parent
+   :agent.run/actor actor
+   :agent.run/replica replica
    :agent.run/status :queued
    :agent.run/created-at now-ms
    :agent.run/updated-at now-ms
@@ -77,6 +86,7 @@
   [run {:tamaki.event/keys [kind at data]}]
   (case kind
     :run/submitted (or run (:run data))
+    :run/configured (merge run data)
     :run/leased (transition run :leased at data)
     :run/started (transition run :running at data)
     :run/checkpointed (transition run :checkpointed at data)
@@ -93,12 +103,14 @@
   (reduce
    (fn [runs event]
      (let [id (:tamaki.event/run event)
-           current (get runs id)]
-       (assoc runs id (apply-event current event))))
+           current (get runs id)
+           next-run (apply-event current event)]
+       ;; Loop, actor and audit events share the durable event stream but are
+       ;; not AgentRuns. Never materialize them as nil run entries.
+       (if next-run (assoc runs id next-run) runs)))
    {}
    events))
 
 (defn resumable?
   [run]
   (contains? #{:failed :checkpointed :held} (:agent.run/status run)))
-

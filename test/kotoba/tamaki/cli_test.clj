@@ -5,7 +5,8 @@
             [kotoba.tamaki.cli :as cli]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.model :as model]
-            [kotoba.tamaki.store :as store]))
+            [kotoba.tamaki.store :as store]
+            [kotoba.tamaki.supervisor :as supervisor]))
 
 (def ready-report
   {:bb {:ok? true}
@@ -25,6 +26,86 @@
 (defn event-kinds [root]
   (mapv :tamaki.event/kind (store/read-local-events root)))
 
+(deftest consultation-speaks-only-at-the-decision-boundary
+  (let [requests (atom [])]
+    (with-redefs [supervisor/consult!
+                  (fn [request]
+                    (swap! requests conj request)
+                    {:run-id "supervisor" :decision :rejected})]
+      (is (zero? (:exit (call ["consult" "Integrate reviewed patch"]))))
+      (is (true? (:voice? (first @requests))))
+      (is (zero? (:exit
+                  (call ["consult" "CI confirmation" "--silent"]))))
+      (is (false? (:voice? (second @requests)))))))
+
+(deftest business-kpi-observation-is-durable-and-queryable
+  (let [root (temp-root)
+        observation (java.io.File/createTempFile "tamaki-kpi-" ".edn")
+        targets (java.io.File/createTempFile "tamaki-targets-" ".edn")]
+    (spit observation
+          (pr-str {:period-days 7
+                   :stocks {:mrr-jpy 500000 :qualified-leads 20}
+                   :flows {:delta-mrr-jpy 100000
+                           :experiments-shipped 2}
+                   :rates {:confidence 0.8}}))
+    (spit targets
+          (pr-str {:target/mrr-jpy 1000000
+                   :target/risk-adjusted-delta-mrr-jpy 100000
+                   :target/experiments-per-week 3
+                   :target/activation-rate 0.3
+                   :target/paid-conversion-rate 0.1
+                   :target/max-churn-rate 0.05}))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [{observed :value}
+            (call ["kpi" "observe" "--file" (.getPath observation)
+                   "--targets" (.getPath targets)])
+            {status :value}
+            (call ["kpi" "status" "--targets" (.getPath targets)])]
+        (is (= :observed (:business/status observed)))
+        (is (= observed status))
+        (is (= [:business/observed] (event-kinds root)))))))
+
+(deftest supervisor-ensure-reuses-one-compatible-loop
+  (let [root (temp-root)
+        args ["loop" "ensure"
+              "--project" "/tmp/project"
+              "--objective" "operate continuously"
+              "--runners" "codex,claude"
+              "--continuous"]]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [first-id (:tamaki.loop/id (:value (call args)))
+            second-id (:tamaki.loop/id (:value (call args)))
+            active (filter #(= :active (:tamaki.loop/status %))
+                           (vals (cli/campaigns)))]
+        (is (= first-id second-id))
+        (is (= 1 (count active)))
+        (is (false? (:tamaki.loop/auto-approve (first active))))))))
+
+(deftest github-evolution-boundary-stops-only-matching-active-loops
+  (let [root (temp-root)
+        project-a "/tmp/project-a"
+        project-b "/tmp/project-b"]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (call ["loop" "start" "--project" project-a "--objective" "evolve a"])
+      (call ["loop" "start" "--project" project-b "--objective" "evolve b"])
+      (let [{:keys [value exit]}
+            (call ["loop" "stop-active" "--project" project-a
+                   "--reason" "github-evolution-boundary"])
+            campaigns (vals (cli/campaigns))
+            a (first (filter #(= project-a (:tamaki.loop/project %)) campaigns))
+            b (first (filter #(= project-b (:tamaki.loop/project %)) campaigns))]
+        (is (zero? exit))
+        (is (= 1 (count (:stopped value))))
+        (is (= :completed (:tamaki.loop/status a)))
+        (is (= :github-evolution-boundary (:tamaki.loop/stop-reason a)))
+        (is (= :active (:tamaki.loop/status b)))))))
+
 (deftest public-submit-status-and-agents
   (let [root (temp-root)]
     (with-redefs [store/default-root (constantly root)
@@ -41,6 +122,21 @@
         (is (= [id] (mapv :agent.run/id listing)))
         (is (= id (get-in agents [0 :run :agent.run/id])))
         (is (= [:run/submitted] (event-kinds root)))))))
+
+(deftest runner-pool-submits-distinct-durable-workers
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 1000)]
+      (let [{:keys [value exit]}
+            (call ["swarm" "inspect safely" "--project" "/tmp/project"
+                   "--runners" "codex,claude-zai"])]
+        (is (zero? exit))
+        (is (= #{"codex" "claude-zai"}
+               (set (map :agent.run/runner (:runs value)))))
+        (is (= #{"codex:" "claude-zai:"}
+               (set (map :agent.run/model (:runs value)))))
+        (is (= 2 (count (store/read-local-events root))))))))
 
 (deftest successful-and-failed-execution
   (doseq [[runtime-exit expected-status terminal-kind]
@@ -142,6 +238,7 @@
             (call ["loop" "start"
                    "--project" "/repo"
                    "--objective" "grow safely"
+                   "--runner" "claude-zai"
                    "--max-cycles" "4"
                    "--max-failures" "2"])
             id (:tamaki.loop/id campaign)
@@ -149,7 +246,24 @@
         (is (= :active (:tamaki.loop/status status)))
         (is (= 4 (:tamaki.loop/max-cycles status)))
         (is (= 2 (:tamaki.loop/max-failures status)))
+        (is (= "claude-zai" (:tamaki.loop/runner status)))
+        (is (= "claude-zai:" (:tamaki.loop/model status)))
         (is (= [:loop/started] (event-kinds root)))))))
+
+(deftest persistent-loop-accepts-a-managed-provider-pool
+  (let [root (temp-root)]
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)
+                  cli/now (constantly 5100)]
+      (let [{campaign :value}
+            (call ["loop" "start"
+                   "--project" "/repo"
+                   "--objective" "discover and resolve new issues"
+                   "--runners" "codex,claude,claude-zai,grok"
+                   "--continuous"])]
+        (is (:tamaki.loop/continuous campaign))
+        (is (= ["codex" "claude" "claude-zai" "grok"]
+               (:tamaki.loop/runners campaign)))))))
 
 (deftest patch-commit-is-resolved-from-run-receipt
   (let [root (temp-root)

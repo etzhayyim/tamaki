@@ -12,6 +12,7 @@
 (def event-attr :tamaki.event/blob)
 (def supported-backends #{:file :kotobase :dual})
 (def ^:private http-client (delay (HttpClient/newHttpClient)))
+(def ^:private local-append-lock (Object.))
 
 (def ^:dynamic *http-fn*
   (fn [{:keys [url headers body]}]
@@ -75,8 +76,9 @@
 
 (defn append-local-event!
   [root event]
-  (ensure-root! root)
-  (spit (event-file root) (str (pr-str event) "\n") :append true)
+  (locking local-append-lock
+    (ensure-root! root)
+    (spit (event-file root) (str (pr-str event) "\n") :append true))
   event)
 
 (defn- xrpc!

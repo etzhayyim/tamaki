@@ -4,11 +4,18 @@
             [clojure.pprint :as pprint]
             [clojure.string :as str]
             [kotoba.tamaki.adapters :as adapters]
+            [kotoba.tamaki.active-inference :as active-inference]
+            [kotoba.tamaki.actor :as actor]
+            [kotoba.tamaki.business :as business]
             [kotoba.tamaki.delivery :as delivery]
+            [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.model :as model]
-            [kotoba.tamaki.store :as store])
+            [kotoba.tamaki.runners :as runners]
+            [kotoba.tamaki.store :as store]
+            [kotoba.tamaki.supervisor :as supervisor]
+            [kotoba.tamaki.visual :as visual])
   (:gen-class))
 
 (defn now [] (System/currentTimeMillis))
@@ -21,13 +28,22 @@
        "  tamaki run <run-id>\n"
        "  tamaki status [run-id]\n"
        "  tamaki resume <run-id>\n"
+       "  tamaki cancel <run-id> [--reason TEXT]\n"
        "  tamaki agents [run-id]\n"
+       "  tamaki runners\n"
+       "  tamaki swarm <goal> --project PATH [--runners IDS] [--execute]\n"
        "  tamaki issue create|show ...\n"
        "  tamaki work issue <issue-id> --project PATH [--execute]\n"
        "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
-       "  tamaki loop start|status|tick|run ...\n"
+       "  tamaki loop start|ensure|status|stop-active|tick|run ...\n"
+       "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
+       "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
+       "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
+       "  tamaki kpi status [--targets FILE]\n"
+       "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
+       "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -35,7 +51,7 @@
        "  tamaki doctor\n"
        "  tamaki contract\n\n"
        "Options:\n"
-       "  --repo OWNER/REPO --pin SHA --node NAME|auto --model MODEL\n"
+       "  --repo OWNER/REPO --pin SHA --node NAME|auto --model MODEL --runner ID\n"
        "  --requires git,nbb,clojure --parent RUN-ID --execute\n"))
 
 (defn parse-args
@@ -51,7 +67,9 @@
       :else
       (let [[x y & more] xs]
         (if (str/starts-with? x "--")
-          (if (contains? #{"--execute" "--approve" "--auto-approve"} x)
+          (if (contains? #{"--execute" "--approve" "--auto-approve" "--voice"
+                           "--silent"
+                           "--continuous"} x)
             (recur (rest xs) positional
                    (assoc options (keyword (subs x 2)) true))
             (recur more positional
@@ -69,12 +87,429 @@
 (defn print-edn [x]
   (pprint/pprint x))
 
-(declare execute-run!)
+(defn default-business-targets-path []
+  (let [private (io/file "actors" "revenue-targets.edn")
+        example (io/file "examples" "revenue-targets.example.edn")]
+    (.getAbsolutePath (if (.isFile private) private example))))
+
+(defn business-targets [options]
+  (business/read-targets
+   (or (:targets options) (default-business-targets-path))))
+
+(defn business-summary
+  ([] (business-summary {}))
+  ([options] (business/summary (events) (business-targets options))))
+
+(defn kpi!
+  [{:keys [positional options]}]
+  (case (first positional)
+    "status"
+    (do (print-edn (business-summary options)) 0)
+
+    "observe"
+    (let [path (:file options)]
+      (when (str/blank? path)
+        (throw (ex-info "kpi observe requires --file OBSERVATION.edn" {})))
+      (let [observation (edn/read-string (slurp (io/file path)))
+            event (business/event observation (now))]
+        (store/append-event! (store/default-root) event)
+        (print-edn (business-summary options))
+        0))
+
+    (throw (ex-info "Usage: tamaki kpi status|observe ..." {}))))
+
+(declare execute-run! submit! require-run!)
+
+(defn consult!
+  [{:keys [positional options]}]
+  (let [summary (str/join " " positional)]
+    (when (str/blank? summary)
+      (throw (ex-info "Consultation summary is required" {})))
+    (print-edn
+     (supervisor/consult!
+      {:title (:title options)
+       :summary summary
+       :action (or (:action options) "Continue the agent loop")
+       :impact (:impact options)
+       ;; A consultation is a decision boundary, so Tamaki speaks by default.
+       ;; --silent remains available for CI and accessibility preferences.
+       :voice? (not (:silent options))}))
+    0))
+
+(defn voice!
+  [{:keys [positional] :as parsed}]
+  (let [transcript (str/join " " positional)
+        goal (supervisor/voice-intent transcript)]
+    (submit! (assoc parsed :positional [goal]))))
+
+(defn actor-status [spec]
+  (let [summary (business-summary)
+        control (business/control-signals summary)
+        controlled (assoc spec :actor/control-pressure
+                          (if (= :observed (:business/status summary))
+                            (:business-pressure control)
+                            0.0))]
+    (actor/reconcile-plan controlled (remove nil? (vals (runs))) (now))))
+
+(defn reconcile-actor!
+  [spec execute?]
+  (let [before (actor-status spec)
+        existing-count (count (actor/actor-runs spec
+                                                (remove nil? (vals (runs)))))
+        actor-token (str/replace (str (:actor/id spec)) #"[^A-Za-z0-9]+" "-")]
+    (doseq [run-id (:cancel before)
+            :let [run (run-by-id run-id)]]
+      (emit! run :run/cancelled {:actor/id (:actor/id spec)
+                                 :actor/reason :scale-down}))
+    (let [spawned
+          (mapv
+           (fn [offset]
+             (let [replica-index (+ existing-count offset)
+                   base (actor/replica-run spec replica-index (now))
+                   profile (runners/profile (:agent.run/runner base))
+                   run (assoc base :agent.run/model (:model profile))]
+               (emit! run :run/submitted
+                      {:run run :actor/id (:actor/id spec)
+                       :actor/replica replica-index})
+               run))
+           (range (:spawn before)))
+          executable
+          (when execute?
+            (->> (concat (:active before) spawned)
+                 (filter #(= :queued (:agent.run/status %)))
+                 (mapv
+                  (fn [run]
+                    (let [profile (runners/profile (:agent.run/runner run))
+                          configured
+                          {:agent.run/source-project (:agent.run/project run)
+                           :agent.run/project
+                           (runners/prepare-worktree!
+                            (:agent.run/project run)
+                            actor-token
+                            (str (:agent.run/runner run) "-"
+                                 (:agent.run/replica run)))
+                           :agent.run/model (:model profile)}]
+                      (emit! run :run/configured configured)
+                      (run-by-id (:agent.run/id run)))))))
+          results
+          (when (seq executable)
+            (->> executable
+                 (mapv (fn [run]
+                         (future
+                           {:run-id (:agent.run/id run)
+                            :runner (:agent.run/runner run)
+                            :exit (execute-run! run)})))
+                 (mapv deref)))
+          after (actor-status spec)]
+      (print-edn
+       (cond-> (assoc after
+                      :spawned
+                      (mapv #(select-keys
+                              % [:agent.run/id :agent.run/replica
+                                 :agent.run/runner :agent.run/model])
+                            spawned))
+         results (assoc :results results)))
+      (if (and results (some #(not (zero? (:exit %))) results)) 1 0))))
+
+(defn actor!
+  [{:keys [positional options]}]
+  (let [[action path] positional
+        spec (when path (actor/read-spec path))]
+    (case action
+      "validate" (do (print-edn spec) 0)
+      "status" (do (print-edn (actor-status spec)) 0)
+      "reconcile" (reconcile-actor! spec (:execute options))
+      (throw (ex-info
+              "Usage: tamaki actor validate|status|reconcile SPEC.edn"
+              {})))))
+
+(defn evolution-candidates []
+  (evolution/candidates (events)))
+
+(defn evolution-candidate! [id]
+  (or (get (evolution-candidates) id)
+      (throw (ex-info "Unknown evolution candidate" {:evolution/id id}))))
+
+(defn append-evolution! [candidate kind data]
+  (store/append-event! (store/default-root)
+                       (evolution/event candidate kind (now) data)))
+
+(defn evolve-propose!
+  [{:keys [positional options]}]
+  (let [issue (second positional)
+        project (or (:project options) (.getAbsolutePath (io/file ".")))
+        objective (:objective options)]
+    (when-not (evolution/radicle-id? issue)
+      (throw (ex-info "evolve propose requires a full Radicle issue ID" {})))
+    (delivery/succeeded!
+     (delivery/execute! (delivery/issue-show-command issue) project)
+     "Radicle evolution issue lookup")
+    (let [status (delivery/succeeded!
+                  (delivery/execute! (delivery/git-status-command) project)
+                  "evolution clean-tree check")]
+      (when (seq (delivery/porcelain-paths (:out status)))
+        (throw (ex-info "Evolution proposal requires a clean canonical tree"
+                        {:paths (delivery/porcelain-paths (:out status))}))))
+    (let [base (-> (delivery/succeeded!
+                    (delivery/execute! (delivery/git-head-command) project)
+                    "evolution base commit")
+                   :out str/trim)
+          timestamp (now)
+          issue-short (subs issue 0 7)
+          branch (str "evolution/rad-" issue-short "-" timestamp)
+          worktree (.getAbsolutePath
+                    (io/file (.getParentFile (io/file project))
+                             (str ".tamaki-" (.getName (io/file project))
+                                  "-evolution-" issue-short "-" timestamp)))
+          created (delivery/execute!
+                   ["git" "-C" project "worktree" "add" "-b"
+                    branch worktree base]
+                   project)]
+      (delivery/succeeded! created "isolated evolution worktree creation")
+      (let [candidate (evolution/candidate
+                       {:issue issue :objective objective :project project
+                        :base-commit base :branch branch :worktree worktree}
+                       timestamp)]
+        (append-evolution! candidate :evolution/proposed
+                           {:candidate candidate})
+        (print-edn candidate)
+        0))))
+
+(defn parse-evolution-evidence [options]
+  (cond-> {}
+    (:commit options) (assoc :evolution/commit (:commit options))
+    (:patch-id options) (assoc :evolution/patch-id (:patch-id options))
+    (:pr-url options) (assoc :evolution/pr-url (:pr-url options))
+    (:tests-passed options) (assoc :evolution/tests-passed?
+                                   (= "true" (:tests-passed options)))
+    (:review-accepted options) (assoc :evolution/review-accepted?
+                                     (= "true" (:review-accepted options)))
+    (:replay-passed options) (assoc :evolution/replay-passed?
+                                   (= "true" (:replay-passed options)))
+    (:canary-passed options) (assoc :evolution/canary-passed?
+                                   (= "true" (:canary-passed options)))
+    (:fitness-before options) (assoc :evolution/fitness-before
+                                     (edn/read-string (:fitness-before options)))
+    (:fitness-after options) (assoc :evolution/fitness-after
+                                    (edn/read-string (:fitness-after options)))))
+
+(defn evolve-transition!
+  [{:keys [positional options]}]
+  (let [id (second positional)
+        status (some-> (nth positional 2 nil) keyword)
+        candidate (evolution-candidate! id)
+        evidence (parse-evolution-evidence options)]
+    ;; Validate before appending; a malformed durable event must never poison
+    ;; the candidate fold.
+    (let [next-candidate (evolution/transition candidate status (now) evidence)]
+      (append-evolution! candidate :evolution/transition
+                         {:status status :evidence evidence})
+      (print-edn next-candidate)
+      0)))
+
+(defn evolve-open-patch!
+  [{:keys [positional options]}]
+  (let [candidate (evolution-candidate! (second positional))
+        worktree (:evolution/worktree candidate)
+        title (or (:title options)
+                  (str "evolve: " (:evolution/objective candidate)))]
+    (when-not (contains? #{:tested :reviewed :canary :awaiting-human}
+                         (:evolution/status candidate))
+      (throw (ex-info "Radicle patch requires a tested evolution candidate"
+                      {:status (:evolution/status candidate)})))
+    (let [result (delivery/succeeded!
+                  (delivery/execute! (delivery/patch-create-command title)
+                                     worktree)
+                  "Radicle evolution patch creation")
+          patch-id (delivery/output-id result)
+          evidence {:evolution/patch-id patch-id
+                    :evolution/authority :radicle}]
+      (when-not (evolution/radicle-id? patch-id)
+        (throw (ex-info "Radicle did not return a full patch ID"
+                        {:output (:out result) :error (:err result)})))
+      (append-evolution! candidate :evolution/evidence {:evidence evidence})
+      (print-edn (merge candidate evidence))
+      0)))
+
+(defn evolve-open-pr!
+  [{:keys [positional options]}]
+  (let [candidate (evolution-candidate! (second positional))
+        worktree (:evolution/worktree candidate)
+        branch (:evolution/branch candidate)
+        title (or (:title options)
+                  (str "evolve: " (:evolution/objective candidate)))
+        issue (:evolution/issue candidate)
+        patch-id (:evolution/patch-id candidate)]
+    (when-not (contains? #{:tested :reviewed :canary :awaiting-human}
+                         (:evolution/status candidate))
+      (throw (ex-info "GitHub mirror PR requires a tested evolution candidate"
+                      {:status (:evolution/status candidate)})))
+    (delivery/succeeded!
+     (delivery/execute! ["git" "push" "-u" "origin" branch] worktree)
+     "evolution branch push")
+    (let [result (delivery/succeeded!
+                  (delivery/execute!
+                   ["gh" "pr" "create" "--draft" "--title" title
+                    "--body"
+                    (str "Evolution candidate `" (:evolution/id candidate)
+                         "`.\n\nRadicle-Issue: `" issue "`"
+                         (when patch-id
+                           (str "\nRadicle-Patch: `" patch-id "`"))
+                         "\n\nPromotion remains gated by tests, independent "
+                         "review, historical replay, canary, and voice approval.")
+                    "--head" branch]
+                   worktree)
+                  "draft evolution PR creation")
+          pr-url (str/trim (:out result))
+          evidence {:evolution/pr-url pr-url}]
+      (append-evolution! candidate :evolution/evidence
+                         {:evidence evidence})
+      (print-edn (assoc candidate :evolution/pr-url pr-url))
+      0)))
+
+(defn replay-durable-state! []
+  (let [durable-events (events)]
+    (model/fold-events durable-events)
+    (agent-loop/campaigns durable-events)
+    (evolution/candidates durable-events)
+    true))
+
+(defn evolve-verify!
+  [{:keys [positional command]}]
+  (let [candidate (evolution-candidate! (second positional))]
+    (when-not (= :implemented (:evolution/status candidate))
+      (throw (ex-info "Verification requires an implemented candidate"
+                      {:status (:evolution/status candidate)})))
+    (when (empty? command)
+      (throw (ex-info "evolve verify requires -- TEST_COMMAND" {})))
+    (let [canonical-head
+          (-> (delivery/succeeded!
+               (delivery/execute!
+                (delivery/git-head-command)
+                (:evolution/project candidate))
+               "canonical isolation check")
+              :out str/trim)]
+      (when-not (= canonical-head (:evolution/base-commit candidate))
+        (throw (ex-info "Canonical tree moved during candidate evaluation"
+                        {:expected (:evolution/base-commit candidate)
+                         :actual canonical-head}))))
+    (let [tests (delivery/execute! command (:evolution/worktree candidate))
+          replay? (try (replay-durable-state!)
+                       (catch Exception _ false))
+          passed? (and (zero? (:exit tests)) replay?)
+          status (if passed? :tested :rejected)
+          evidence {:evolution/tests-passed? (zero? (:exit tests))
+                    :evolution/replay-passed? replay?
+                    :evolution/test-command command
+                    :evolution/test-exit (:exit tests)}]
+      (append-evolution! candidate :evolution/transition
+                         {:status status :evidence evidence})
+      (print-edn {:evolution/id (:evolution/id candidate)
+                  :status status :evidence evidence})
+      (if passed? 0 1))))
+
+(defn evolve-canary!
+  [{:keys [positional command]}]
+  (let [candidate (evolution-candidate! (second positional))]
+    (when-not (= :reviewed (:evolution/status candidate))
+      (throw (ex-info "Canary requires an independently reviewed candidate"
+                      {:status (:evolution/status candidate)})))
+    (when (empty? command)
+      (throw (ex-info "evolve canary requires -- CANARY_COMMAND" {})))
+    (let [result (delivery/execute! command (:evolution/worktree candidate))
+          passed? (zero? (:exit result))
+          status (if passed? :canary :rejected)
+          evidence {:evolution/canary-passed? passed?
+                    :evolution/canary-command command
+                    :evolution/canary-exit (:exit result)}]
+      (append-evolution! candidate :evolution/transition
+                         {:status status :evidence evidence})
+      (print-edn {:evolution/id (:evolution/id candidate)
+                  :status status :evidence evidence})
+      (if passed? 0 1))))
+
+(defn evolve-promote!
+  [{:keys [positional]}]
+  (let [candidate (evolution-candidate! (second positional))]
+    (when-not (evolution/promotion-ready? candidate)
+      (throw (ex-info "Evolution candidate is not promotion-ready"
+                      {:candidate candidate})))
+    (let [{:keys [decision]}
+          (supervisor/consult!
+           {:title "Tamaki Radicle self-evolution promotion"
+            :summary (str "Candidate " (:evolution/id candidate)
+                          " passed tests, review, replay and canary.")
+            :action (str "Accept and integrate Radicle patch "
+                         (:evolution/patch-id candidate))
+            :impact "Changes Tamaki's own future behavior."
+            :voice? true})]
+      (if (= :approved decision)
+        (do
+          (delivery/succeeded!
+           (delivery/execute!
+            (delivery/patch-accept-command
+             (:evolution/patch-id candidate)
+             "Tamaki evolution gates passed: tests, replay, review, canary, fitness and HIL.")
+            (:evolution/project candidate))
+           "Radicle evolution patch acceptance")
+          (delivery/succeeded!
+           (delivery/execute! (delivery/git-switch-command "main")
+                              (:evolution/project candidate))
+           "Radicle canonical branch selection")
+          (delivery/succeeded!
+           (delivery/execute!
+            (delivery/git-merge-patch-command (:evolution/patch-id candidate))
+            (:evolution/project candidate))
+           "Radicle evolution patch integration")
+          (delivery/succeeded!
+           (delivery/execute! (delivery/push-canonical-command "main")
+                              (:evolution/project candidate))
+           "Radicle canonical promotion")
+          (delivery/succeeded!
+           (delivery/execute!
+            (delivery/issue-solve-command (:evolution/issue candidate))
+            (:evolution/project candidate))
+           "Radicle evolution issue resolution")
+          (append-evolution! candidate :evolution/transition
+                             {:status :promoted
+                              :evidence {:hil/decision decision}})
+          (print-edn {:evolution/id (:evolution/id candidate)
+                      :result :promoted})
+          0)
+        (do
+          (append-evolution! candidate :evolution/transition
+                             {:status :rejected
+                              :evidence {:hil/decision decision}})
+          (print-edn {:evolution/id (:evolution/id candidate)
+                      :result :rejected})
+          1)))))
+
+(defn evolve!
+  [{:keys [positional] :as parsed}]
+  (case (first positional)
+    "propose" (evolve-propose! parsed)
+    "status" (do
+               (print-edn
+                (if-let [id (second positional)]
+                  (evolution-candidate! id)
+                  (->> (vals (evolution-candidates))
+                       (sort-by :evolution/updated-at >) vec)))
+               0)
+    "transition" (evolve-transition! parsed)
+    "verify" (evolve-verify! parsed)
+    "canary" (evolve-canary! parsed)
+    "open-patch" (evolve-open-patch! parsed)
+    "open-pr" (evolve-open-pr! parsed)
+    "promote" (evolve-promote! parsed)
+    (throw (ex-info
+            "Usage: tamaki evolve propose|status|transition|verify|open-patch|open-pr|canary|promote"
+            {}))))
 
 (defn submit!
   [{:keys [positional options]}]
   (let [goal (first positional)
         mode (keyword (or (:mode options) "local"))
+        runner (when-let [id (:runner options)] (runners/profile id))
         requires (if-let [r (:requires options)]
                    (set (map keyword (remove str/blank? (str/split r #","))))
                    (if (= mode :fleet) #{:git :nbb} #{:git}))
@@ -85,7 +520,8 @@
               :pin (:pin options)
               :mode mode
               :node (keyword (or (:node options) "auto"))
-              :model (:model options)
+              :model (or (:model options) (:model runner))
+              :runner (:id runner)
               :capabilities requires
               :parent (:parent options)}
              (now))]
@@ -174,12 +610,14 @@
                     {:run-id (:agent.run/id run)
                      :status (:agent.run/status run)})))
   (let [report (adapters/readiness)
-        mode (:agent.run/mode run)]
+        mode (:agent.run/mode run)
+        runner (when-let [id (:agent.run/runner run)] (runners/profile id))]
     (when-not (adapters/ready-for? mode report)
       (throw (ex-info "Runtime is not ready" {:mode mode :doctor report})))
     (let [leased (model/transition run :leased (now)
                                    {:agent.run/worker
-                                    (or (System/getenv "TAMAKI_WORKER_ID")
+                                    (or (:id runner)
+                                        (System/getenv "TAMAKI_WORKER_ID")
                                         (.getHostName (java.net.InetAddress/getLocalHost)))})
           _ (emit! run :run/leased
                    (select-keys leased [:agent.run/worker :agent.run/node]))
@@ -188,8 +626,40 @@
                  (adapters/local-command leased))
           _ (emit! leased :run/started {:agent.run/command argv})
           exit (binding [adapters/*process-env*
-                         {"KC_LOOP_ID" (:agent.run/id run)
-                          "KC_SESSION" (:agent.run/id run)}]
+                         (merge
+                          {"KC_LOOP_ID" (:agent.run/id run)
+                           "KC_SESSION" (:agent.run/id run)
+                           "KC_WORKER_ID" (:agent.run/worker leased)
+                           "KC_REQUIRE_DONE_NO_EDIT" "1"}
+                          (:env runner))
+                         adapters/*activity-fn*
+                         (fn [line]
+                           (let [[kind detail]
+                                 (cond
+                                   (str/includes? line "[model:start]")
+                                   [:model/token-processing :started]
+                                   (str/includes? line "[model:end]")
+                                   [:model/token-processing :completed]
+                                   (str/includes? line "[tool:start]")
+                                   [:tool/started :running]
+                                   (str/includes? line "[tool:end]")
+                                   [:tool/completed :completed]
+                                   :else [:agent/output :streaming])]
+                             (emit! leased :agent/activity
+                                    (cond-> {:activity/kind kind
+                                             :activity/state detail
+                                             :activity/text
+                                             (subs line 0 (min 500 (count line)))}
+                                      (str/includes? line "[model:usage]")
+                                      (merge
+                                       (into {}
+                                             (keep
+                                              (fn [[_ key value]]
+                                                (when-let [n (parse-long value)]
+                                                  [(keyword "usage" key) n])))
+                                             (re-seq
+                                              #"(input|output|cache-read|cache-write)=([0-9]+)"
+                                              line)))))))]
                  (adapters/execute! argv
                                     (when (= mode :fleet)
                                       (adapters/sibling "kotoba-fleet"))))
@@ -201,6 +671,68 @@
                        :agent.run/status (if (zero? exit) :succeeded :failed)))
       exit)))
 
+(defn runners! []
+  (print-edn
+   {:runners
+    (mapv (fn [profile]
+            (assoc (runners/safe-profile profile)
+                   :available
+                   (adapters/command-exists?
+                    (case (:kind profile)
+                      :codex "codex"
+                      :claude-zai "claude-zai"
+                      :grok "grok"
+                      "claude"))))
+          (runners/profiles))}))
+
+(defn swarm!
+  [{:keys [positional options]}]
+  (let [goal (first positional)
+        project (:project options)
+        profiles (runners/selected (:runners options))
+        swarm-id (subs (str (random-uuid)) 0 8)]
+    (when (str/blank? goal)
+      (throw (ex-info "swarm requires a goal" {})))
+    (when (str/blank? project)
+      (throw (ex-info "swarm requires --project PATH" {})))
+    (let [runs
+          (mapv
+           (fn [profile]
+             (let [worktree (if (:execute options)
+                              (runners/prepare-worktree!
+                               project swarm-id (:id profile))
+                              project)
+                   run (model/agent-run
+                        {:goal goal :project worktree :source-project project
+                         :mode :local
+                         :model (:model profile) :runner (:id profile)
+                         :capabilities #{:git}
+                         :parent (str "swarm-" swarm-id)}
+                        (now))]
+               (emit! run :run/submitted {:run run :swarm/id swarm-id})
+               run))
+           profiles)]
+      (if (:execute options)
+        (let [results
+              (->> runs
+                   (mapv (fn [run]
+                           (future
+                             {:run-id (:agent.run/id run)
+                              :runner (:agent.run/runner run)
+                              :project (:agent.run/project run)
+                              :exit (execute-run! run)})))
+                   (mapv deref))]
+          (print-edn {:swarm/id swarm-id :results results})
+          (if (every? #(zero? (:exit %)) results) 0 1))
+        (do
+          (print-edn
+           {:swarm/id swarm-id
+            :runs (mapv #(select-keys
+                          % [:agent.run/id :agent.run/runner
+                             :agent.run/model :agent.run/project])
+                        runs)})
+          0)))))
+
 (defn status!
   [id]
   (if id
@@ -211,6 +743,7 @@
                     (mapv #(select-keys %
                                         [:agent.run/id :agent.run/status
                                          :agent.run/mode :agent.run/node
+                                         :agent.run/runner :agent.run/model
                                          :agent.run/goal :agent.run/updated-at]))))))
 
 (defn resume!
@@ -227,6 +760,17 @@
                           {:run-id id :exit exit})))))
     (emit! run :run/requeued {:agent.run/resume-from (:agent.run/status run)})
     (execute-run! (run-by-id id))))
+
+(defn cancel!
+  [id reason]
+  (let [run (require-run! id)]
+    (when (model/terminal-statuses (:agent.run/status run))
+      (throw (ex-info "Terminal run cannot be cancelled"
+                      {:run-id id :status (:agent.run/status run)})))
+    (emit! run :run/cancelled
+           {:agent.run/cancel-reason (or reason "operator-requested")})
+    (print-edn (run-by-id id))
+    0))
 
 (defn agents!
   [root-id]
@@ -428,18 +972,56 @@
       0)))
 
 (defn start-loop! [{:keys [options]}]
-  (let [campaign (agent-loop/campaign
+  (let [profiles (cond
+                   (:runners options) (runners/selected (:runners options))
+                   (:runner options) [(runners/profile (:runner options))]
+                   :else [])
+        runner (first profiles)
+        campaign (agent-loop/campaign
                   {:objective (:objective options)
                    :project (:project options)
-                   :model (:model options)
+                   :model (or (:model options) (:model runner))
+                   :runner (:id runner)
+                   :runners (mapv :id profiles)
                    :max-cycles (parse-long-option options :max-cycles 10)
                    :interval-ms (parse-long-option options :interval-ms 60000)
                    :max-failures (parse-long-option options :max-failures 3)
-                   :auto-approve (boolean (:auto-approve options))}
+                   :auto-approve (boolean (:auto-approve options))
+                   :continuous (boolean (:continuous options))}
                   (now))]
     (append-loop-event! campaign :loop/started {:campaign campaign})
     (print-edn campaign)
     0))
+
+(defn ensure-loop!
+  "Return one canonical campaign for the requested supervisor configuration.
+  Stale active campaigns are durably completed instead of accumulating after
+  launchd restarts."
+  [{:keys [options]}]
+  (let [profiles (cond
+                   (:runners options) (runners/selected (:runners options))
+                   (:runner options) [(runners/profile (:runner options))]
+                   :else [])
+        expected-runners (mapv :id profiles)
+        active (->> (vals (campaigns))
+                    (filter #(= :active (:tamaki.loop/status %))))
+        compatible?
+        (fn [campaign]
+          (and (= (:project options) (:tamaki.loop/project campaign))
+               (= (:objective options) (:tamaki.loop/objective campaign))
+               (= expected-runners (:tamaki.loop/runners campaign))
+               (= (boolean (:auto-approve options))
+                  (:tamaki.loop/auto-approve campaign))))
+        canonical (last (sort-by :tamaki.loop/updated-at
+                                 (filter compatible? active)))]
+    (doseq [campaign active
+            :when (not= (:tamaki.loop/id campaign)
+                        (:tamaki.loop/id canonical))]
+      (append-loop-event! campaign :loop/completed
+                          {:reason :superseded-by-supervisor}))
+    (if canonical
+      (do (print-edn canonical) 0)
+      (start-loop! {:options options}))))
 
 (defn loop-status! [id]
   (if id
@@ -448,6 +1030,25 @@
     (print-edn (->> (vals (campaigns))
                     (sort-by :tamaki.loop/updated-at >) vec)))
   0)
+
+(defn stop-active-loops!
+  "Durably complete active campaigns, optionally limited to one project.
+  This is the safety boundary used when GitHub-governed self-evolution owns
+  promotion and the legacy Radicle loop must not continue mutating code."
+  [{:keys [options]}]
+  (let [project (:project options)
+        reason (keyword (or (:reason options) "operator-requested"))
+        active (->> (vals (campaigns))
+                    (filter #(= :active (:tamaki.loop/status %)))
+                    (filter #(or (str/blank? project)
+                                 (= project (:tamaki.loop/project %))))
+                    vec)]
+    (doseq [campaign active]
+      (append-loop-event! campaign :loop/completed {:reason reason}))
+    (print-edn {:stopped (mapv :tamaki.loop/id active)
+                :project project
+                :reason reason})
+    0))
 
 (defn latest-run-event [run-id kind]
   (last (filter #(and (= run-id (:tamaki.event/run %))
@@ -484,14 +1085,17 @@
                               "Criteria:\n- " (str/join "\n- " criteria))
                    :project (:agent.run/project worker)
                    :mode :local :model (:agent.run/model worker)
+                   :runner (:agent.run/runner worker)
                    :parent (:agent.run/id worker)
                    :capabilities #{:git :radicle}}
                   (now))
         verdict-file (io/file (:agent.run/project worker) ".tamaki" "reviews"
                               (str (:agent.run/id reviewer) ".edn"))
+        verdict-path (str ".tamaki/reviews/" (.getName verdict-file))
         reviewer (update reviewer :agent.run/goal
-                         str "\nWrite exactly one EDN verdict to "
-                         (.getAbsolutePath verdict-file)
+                         str "\nUse the write_file tool with relative path "
+                         (pr-str verdict-path)
+                         " to write exactly one EDN verdict"
                          ": {:review/verdict :accepted|:rejected "
                          ":review/commit \"COMMIT\" :review/evidence [\"...\"]}. "
                          "Use :accepted only if every criterion passes.")]
@@ -531,8 +1135,20 @@
       (throw (ex-info "Loop cannot tick" {:loop-id id :reason reason})))
     (let [cycle (inc (:tamaki.loop/cycles campaign))
           project (:tamaki.loop/project campaign)
+          runner-id (agent-loop/runner-for-cycle campaign cycle)
+          runner-profile (when runner-id (runners/profile runner-id))
+          visual-observation (try
+                               (visual/observe! project
+                                                (store/default-root)
+                                                (now))
+                               (catch Exception error
+                                 {:visual/status :analysis-failed
+                                  :visual/error (.getMessage error)}))
           title (str "ASI cycle " cycle ": " (:tamaki.loop/objective campaign))]
-      (append-loop-event! campaign :loop/cycle-started {:loop/cycle cycle})
+      (append-loop-event! campaign :loop/cycle-started
+                          {:loop/cycle cycle :runner runner-id})
+      (append-loop-event! campaign :visual/observed
+                          {:loop/cycle cycle :visual visual-observation})
       (try
         (let [status (delivery/succeeded!
                       (delivery/execute! (delivery/git-status-command) project)
@@ -544,29 +1160,79 @@
                         (delivery/execute! (delivery/issue-list-command) project)
                         "cycle issue discovery")
                 existing (intelligence/parse-issue-list (:out listed))
-                dynamics (intelligence/dynamics-signals
-                          {:failures (:tamaki.loop/failures campaign)
-                           :max-failures (:tamaki.loop/max-failures campaign)
-                           :active-runs (count (filter #(= :running
-                                                          (:agent.run/status %))
-                                                     (vals (runs))))
-                           :open-issues (count existing)})
+                operational-dynamics
+                (intelligence/dynamics-signals
+                 {:failures (:tamaki.loop/failures campaign)
+                  :max-failures (:tamaki.loop/max-failures campaign)
+                  :active-runs (count (filter #(= :running
+                                                 (:agent.run/status %))
+                                            (vals (runs))))
+                  :open-issues (count existing)})
+                business-state (business-summary)
+                business-signals (business/control-signals business-state)
+                work-title
+                (if (= :unobserved (:business/status business-state))
+                  (str "ASI cycle " cycle
+                       ": establish an observed revenue KPI baseline")
+                  title)
+                dynamics
+                (-> (merge intelligence/default-signals
+                           business-signals operational-dynamics)
+                    (assoc :urgency
+                           (max (:urgency operational-dynamics)
+                                (:urgency business-signals)))
+                    (assoc :feedback-pressure
+                           (max (:feedback-pressure operational-dynamics)
+                                (:business-pressure business-signals))))
                 candidates
-                (mapv
-                 (fn [candidate]
-                   (let [shown (delivery/succeeded!
-                                (delivery/execute!
-                                 (delivery/issue-show-command
-                                  (:issue/id candidate))
-                                 project)
-                                "candidate issue inspection")
-                         metadata (intelligence/parse-issue-metadata
-                                   (:out shown))]
-                     (-> candidate
-                         (merge metadata)
-                         (update :issue/signals merge dynamics))))
-                 existing)
-                selected (intelligence/selection candidates)
+                (->> existing
+                     (mapv
+                      (fn [candidate]
+                        (let [shown (delivery/succeeded!
+                                     (delivery/execute!
+                                      (delivery/issue-show-command
+                                       (:issue/id candidate))
+                                      project)
+                                     "candidate issue inspection")
+                              metadata (intelligence/parse-issue-metadata
+                                        (:out shown))]
+                          (-> candidate
+                              (merge metadata)
+                              (update :issue/signals merge dynamics)))))
+                     (filterv :issue/managed?))
+                prior-belief
+                (some->> (events)
+                         (filter #(and (= id (:tamaki.event/run %))
+                                       (= :inference/belief-updated
+                                          (:tamaki.event/kind %))))
+                         last :tamaki.event/data :belief)
+                belief (active-inference/belief-state
+                        prior-belief
+                        (merge intelligence/default-signals dynamics))
+                eligible (intelligence/rank candidates)
+                selected-policy
+                (active-inference/select-policy
+                 belief
+                 (mapv (fn [candidate]
+                         {:id (:issue/id candidate)
+                          :observations (:issue/signals candidate)})
+                       eligible))
+                selected-node
+                (some #(when (= (:issue/id %)
+                                (:policy/id selected-policy)) %)
+                      eligible)
+                selected
+                (when selected-node
+                  {:issue selected-node
+                   :score (intelligence/leverage-score selected-node)
+                   :blocked-count (- (count candidates) (count eligible))
+                   :candidate-count (count candidates)
+                   :ranking (mapv :issue/id eligible)
+                   :inference selected-policy})
+                _ (append-loop-event!
+                   campaign :inference/belief-updated
+                   {:loop/cycle cycle :belief belief
+                    :policy selected-policy})
                 criteria (or (seq (get-in selected [:issue :issue/criteria]))
                              (intelligence/acceptance-criteria
                               (:tamaki.loop/objective campaign)))
@@ -574,8 +1240,9 @@
                          (delivery/succeeded!
                           (delivery/execute!
                            (delivery/issue-create-command
-                            title
-                            (str (agent-loop/cycle-goal campaign cycle "<pending>")
+                            work-title
+                            (str "Managed by: tamaki-supervisor\n\n"
+                                 (agent-loop/cycle-goal campaign cycle "<pending>")
                                  "\n\nAcceptance: "
                                  (str/join "\nAcceptance: " criteria)))
                            project)
@@ -584,11 +1251,11 @@
                              (delivery/output-id opened))
                 decision (or selected
                              {:issue (intelligence/issue-node
-                                      {:id issue-id :title title
+                                      {:id issue-id :title work-title
                                        :criteria criteria :signals dynamics})
                               :score (intelligence/leverage-score
                                       (intelligence/issue-node
-                                       {:id issue-id :title title
+                                       {:id issue-id :title work-title
                                         :criteria criteria :signals dynamics}))
                               :candidate-count 1 :blocked-count 0})
                 run (model/agent-run
@@ -597,9 +1264,17 @@
                                  (str/join "\n- " criteria)
                                  "\nBlockers: "
                                  (pr-str (get-in decision
-                                                 [:issue :issue/blockers])))
+                                                 [:issue :issue/blockers]))
+                                 "\nVisual observation: "
+                                 (pr-str
+                                  (select-keys visual-observation
+                                               [:visual/status :visual/path
+                                                :visual/findings
+                                                :visual/suggested-issue])))
                       :project project :mode :local
-                      :model (:tamaki.loop/model campaign)
+                      :model (or (:model runner-profile)
+                                 (:tamaki.loop/model campaign))
+                      :runner runner-id
                       :capabilities #{:git :radicle}}
                      (now))]
             (store/append-event! (store/default-root)
@@ -610,6 +1285,11 @@
                       {:issue/id issue-id
                        :issue/selection decision
                        :issue/dynamics dynamics
+                       :business/control
+                       (select-keys business-state
+                                    [:business/status :business/kpis
+                                     :business/progress
+                                     :business/control-score])
                        :issue/criteria criteria})
             (let [before (quality-snapshot)]
             (let [exit (execute-run! run)
@@ -637,7 +1317,7 @@
                     (deliver! {:positional [(:agent.run/id run)]
                                :options {:issue issue-id
                                          :paths (str/join "," paths)
-                                         :message title}})
+                                         :message work-title}})
                     (let [patch-id (or
                                     (get-in
                                      (latest-run-event (:agent.run/id run)
@@ -659,25 +1339,44 @@
                                          (let [after (quality-snapshot)]
                                            (assoc (intelligence/effect before after)
                                                   :effect/after after)))))
-                      (if (:tamaki.loop/auto-approve campaign)
-                        (do
-                          (integrate! {:positional [patch-id]
-                                       :options {:run (:agent.run/id run)
-                                                 :issue issue-id
-                                                 :tests evidence
-                                                 :approve true}})
+                      (let [decision
+                            (if (:tamaki.loop/auto-approve campaign)
+                              :approved
+                              (:decision
+                               (supervisor/consult!
+                                {:title "Tamaki: integration confirmation"
+                                 :summary
+                                 (str "Issue " issue-id
+                                      " passed implementation and independent review.")
+                                 :action (str "Integrate patch " patch-id)
+                                 :impact
+                                 "Updates the repository and resolves the Radicle issue."
+                                 :voice? true})))]
+                        (if (= :approved decision)
+                          (do
+                            (integrate! {:positional [patch-id]
+                                         :options {:run (:agent.run/id run)
+                                                   :issue issue-id
+                                                   :tests evidence
+                                                   :approve true}})
+                            (append-loop-event!
+                             campaign :loop/cycle-integrated
+                             {:loop/cycle cycle :issue/id issue-id
+                              :patch/id patch-id
+                              :hil/decision decision
+                              :agent.run/id (:agent.run/id run)}))
                           (append-loop-event!
-                           campaign :loop/cycle-integrated
+                           campaign :loop/cycle-reviewed
                            {:loop/cycle cycle :issue/id issue-id
-                            :patch/id patch-id :agent.run/id (:agent.run/id run)}))
-                        (append-loop-event!
-                         campaign :loop/cycle-reviewed
-                         {:loop/cycle cycle :issue/id issue-id
-                          :patch/id patch-id :agent.run/id (:agent.run/id run)}))
-                      (print-edn {:loop/id id :loop/cycle cycle
-                                  :result (if (:tamaki.loop/auto-approve campaign)
-                                            :integrated :awaiting-approval)
-                                  :issue/id issue-id :patch/id patch-id}))))))))
+                            :patch/id patch-id
+                            :hil/decision decision
+                            :agent.run/id (:agent.run/id run)}))
+                        (print-edn
+                         {:loop/id id :loop/cycle cycle
+                          :result (if (= :approved decision)
+                                    :integrated :awaiting-approval)
+                          :hil/decision decision
+                          :issue/id issue-id :patch/id patch-id})))))))))
             )
         (catch Exception e
           (append-loop-event! campaign :loop/cycle-failed
@@ -712,10 +1411,13 @@
   (let [[action id] positional]
     (case action
       "start" (start-loop! parsed)
+      "ensure" (ensure-loop! parsed)
       "status" (loop-status! id)
+      "stop-active" (stop-active-loops! parsed)
       "tick" (tick-loop! id)
       "run" (run-loop! id)
-      (throw (ex-info "Usage: tamaki loop start|status|tick|run ..." {})))))
+      (throw (ex-info "Usage: tamaki loop start|ensure|status|stop-active|tick|run ..."
+                      {})))))
 
 (defn dispatch
   [args]
@@ -727,7 +1429,11 @@
       "run" (execute-run! (run-by-id (first (:positional parsed))))
       "status" (do (status! (first (:positional parsed))) 0)
       "resume" (resume! (first (:positional parsed)))
+      "cancel" (cancel! (first (:positional parsed))
+                         (get-in parsed [:options :reason]))
       "agents" (do (agents! (first (:positional parsed))) 0)
+      "runners" (do (runners!) 0)
+      "swarm" (swarm! parsed)
       "issue" (issue! parsed)
       "work" (if (= "issue" (first (:positional parsed)))
                  (work-issue! parsed)
@@ -736,6 +1442,11 @@
       "review" (review! parsed)
       "integrate" (integrate! parsed)
       "loop" (loop! parsed)
+      "consult" (consult! parsed)
+      "voice" (or (voice! parsed) 0)
+      "actor" (actor! parsed)
+      "kpi" (kpi! parsed)
+      "evolve" (evolve! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

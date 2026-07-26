@@ -1,3 +1,6 @@
 /.tamaki/
 /.cpcache/
 /.cljs_node_repl/
+/actors/revenue-targets.edn
+/ops/dev.kotoba.tamaki.supervisor.plist
+/observations/
