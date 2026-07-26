@@ -24,8 +24,13 @@ fi
 
 index=0
 while true; do
-  specs=("$actor_dir"/*.edn)
-  if [[ ! -f "${specs[0]}" ]]; then
+  specs=()
+  for candidate in "$actor_dir"/*.edn; do
+    [[ -f "$candidate" ]] || continue
+    grep -q ':actor/type :business-domain' "$candidate" || continue
+    specs+=("$candidate")
+  done
+  if [[ "${#specs[@]}" -eq 0 ]]; then
     echo "No ActorSpecs found in $actor_dir" >&2
     exit 2
   fi
