@@ -646,6 +646,9 @@
                            "KC_RUN_TIMEOUT_MS"
                            (str (get-in run [:agent.run/budget :deadline-ms]
                                         1200000))
+                           "KC_LEASE_TTL_MS"
+                           (str (get-in run [:agent.run/budget :deadline-ms]
+                                        1200000))
                            "KC_SUBSCRIPTION_TIMEOUT_MS"
                            (str (min 900000
                                      (get-in run
@@ -1257,7 +1260,10 @@
                               "dedicated git diff/status tools or allowlisted "
                               "`git show --format=raw --no-patch " commit-id
                               "` and `git show --stat " commit-id
-                              "`. Do not use git log or git branch; the patch "
+                              "`. Do not use git log, git branch, git merge-base, "
+                              "compound shell commands, or bin/tamaki doctor. "
+                              "After the documented tests pass, immediately "
+                              "write the required verdict. The patch "
                               "id is not a Git object. Do not edit "
                               "tracked files, commit, deliver, or integrate.\n"
                               "Criteria:\n- " (str/join "\n- " criteria))

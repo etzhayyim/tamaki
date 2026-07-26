@@ -177,9 +177,9 @@
                       store/backend (constantly :file)
                       adapters/readiness (constantly ready-report)
                       cli/now (constantly 2000)]
-          (binding [adapters/*execute-fn*
+                  (binding [adapters/*execute-fn*
                     (fn [argv cwd]
-                      (swap! commands conj [argv cwd])
+                      (swap! commands conj [argv cwd adapters/*process-env*])
                       runtime-exit)]
             (let [{run :value} (call ["submit" "execute me"
                                       "--project" "/tmp/project"])
@@ -190,6 +190,12 @@
               (is (= expected-status
                      (:agent.run/status (:value (call ["status" id])))))
               (is (= 1 (count @commands)))
+              (is (= "1200000"
+                     (get-in @commands [0 2 "KC_LEASE_TTL_MS"])))
+              (is (= "1200000"
+                     (get-in @commands [0 2 "KC_RUN_TIMEOUT_MS"])))
+              (is (= "180000"
+                     (get-in @commands [0 2 "KC_PROCESS_TIMEOUT_MS"])))
               (is (= [:run/submitted :run/leased :run/started terminal-kind]
                      (event-kinds root))))))))))
 
