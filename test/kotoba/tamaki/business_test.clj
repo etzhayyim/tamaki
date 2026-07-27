@@ -56,6 +56,31 @@
       (is (= 1.0 (:business-pressure signals)))
       (is (zero? (:confidence signals))))))
 
+(deftest portfolio-sums-latest-fresh-domain-facts-and-discloses-stale-domains
+  (let [events [(business/event
+                 (assoc observation :domain :alpha :fresh? true
+                        :stocks (assoc (:stocks observation) :traffic 100))
+                 1)
+                (business/event
+                 (assoc observation :domain :alpha :fresh? true
+                        :stocks (assoc (:stocks observation) :traffic 200))
+                 2)
+                (business/event
+                 (assoc observation :domain :beta :fresh? true
+                        :stocks (assoc (:stocks observation) :traffic 300))
+                 3)
+                (business/event
+                 (assoc observation :domain :stale :fresh? false
+                        :stocks (assoc (:stocks observation) :traffic 9999))
+                 4)]
+        summary (business/summary events targets)
+        portfolio (:business/observation summary)]
+    (is (= :observed (:business/status summary)))
+    (is (= 500.0 (get-in summary [:business/kpis :traffic])))
+    (is (= [:alpha :beta] (:domains portfolio)))
+    (is (= [:stale] (:stale-domains portfolio)))
+    (is (= 2 (count (:domains portfolio))))))
+
 (deftest stock-flow-is-derived-only-from-durable-facts
   (let [dynamics (business/stock-flow [(business/event observation 1)]
                                       targets)]

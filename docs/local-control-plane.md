@@ -11,8 +11,11 @@ The resident domain supervisor reads private configuration from:
 ```
 
 Set `TAMAKI_WORKSPACE` and optionally `TAMAKI_CONTROL_ROOT` to override it.
-Runtime events are separate at
-`<workspace>/projects/.tamaki/tamaki-state` (`TAMAKI_STATE_DIR`).
+The resident supervisor writes observations and AgentRun events to Tamaki's
+canonical local stream at `<tamaki>/.tamaki` so the portfolio controller and
+Observatory consume the same facts. Set `TAMAKI_STATE_DIR` only when an
+explicitly isolated test or staging control plane is intended; an isolated
+stream does not drive the resident business loop.
 
 The control directory may be an independent private Git repository:
 

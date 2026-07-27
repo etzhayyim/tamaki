@@ -90,6 +90,54 @@
        (mapv #(normalize-observation
                (get-in % [:tamaki.event/data :observation])))))
 
+(defn portfolio-observation
+  "Aggregate the latest observation per domain without allowing one stale
+  provider to erase fresh portfolio evidence. Stocks and flows are additive;
+  confidence is the mean of the included observations. The selected and stale
+  domain sets remain explicit for audit and UI disclosure."
+  [events]
+  (let [latest-by-domain
+        (->> (recent-observations events)
+             (reduce (fn [latest observation]
+                       (assoc latest (:domain observation) observation))
+                     {}))
+        fresh (->> (vals latest-by-domain)
+                   (remove #(false? (:fresh? %)))
+                   vec)
+        stale (->> (vals latest-by-domain)
+                   (filter #(false? (:fresh? %)))
+                   (keep :domain)
+                   (sort-by str)
+                   vec)
+        add-section
+        (fn [section keys]
+          (into {}
+                (map (fn [key]
+                       [key (reduce + 0.0
+                                    (map #(double (get-in % [section key] 0.0))
+                                         fresh))]))
+                keys))]
+    (when (seq latest-by-domain)
+      (if (seq fresh)
+        {:source :metrics/portfolio
+         :domain :portfolio
+         :domains (->> fresh (keep :domain) (sort-by str) vec)
+         :stale-domains stale
+         :fresh? true
+         :collected-at (apply max 0 (keep :collected-at fresh))
+         :source-observed-at
+         (apply max 0 (keep :source-observed-at fresh))
+         :period-days (apply max 1.0 (map :period-days fresh))
+         :stocks (add-section :stocks stock-keys)
+         :flows (add-section :flows flow-keys)
+         :rates
+         {:confidence
+          (/ (reduce + (map #(double (get-in % [:rates :confidence] 0.0))
+                            fresh))
+             (double (count fresh)))}}
+        ;; Preserve the newest stale fact so summary continues to fail closed.
+        (last (sort-by :collected-at (vals latest-by-domain)))))))
+
 (defn target-progress [actual target]
   (if (pos? (double (or target 0)))
     (clamp (/ (double (or actual 0)) (double target)))
@@ -98,7 +146,9 @@
 (defn summary
   ([events targets] (summary events targets nil))
   ([events targets domain]
-  (if-let [observation (latest-observation events domain)]
+  (if-let [observation (if domain
+                         (latest-observation events domain)
+                         (portfolio-observation events))]
     (if (false? (:fresh? observation))
       {:business/status :stale
        :business/observation observation

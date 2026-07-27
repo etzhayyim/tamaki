@@ -12,7 +12,11 @@ concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-3}"
 cd "$tamaki_root"
 export TAMAKI_WORKSPACE="$workspace_root"
 export TAMAKI_WORKSPACE_ROOT="$workspace_root"
-export TAMAKI_STATE_DIR="${TAMAKI_STATE_DIR:-$workspace_root/projects/.tamaki/tamaki-state}"
+# Business observations must enter the same durable stream consumed by the
+# portfolio supervisor and Observatory. A caller may still isolate a test or
+# staging plane explicitly, but the resident default is the canonical local
+# Tamaki state.
+export TAMAKI_STATE_DIR="${TAMAKI_STATE_DIR:-$tamaki_root/.tamaki}"
 
 if [[ ! -d "$actor_dir" ]]; then
   echo "Tamaki control actor directory not found: $actor_dir" >&2
