@@ -55,8 +55,18 @@
      (io/file parent
               (str "." (.getName repo) "-tamaki-" swarm-id "-" runner-id)))))
 
+(defn available-worktree-path [project swarm-id runner-id]
+  (let [base (worktree-path project swarm-id runner-id)]
+    (if-not (.exists (io/file base))
+      base
+      (first
+       (for [suffix (range 2 10000)
+             :let [candidate (str base "-" suffix)]
+             :when (not (.exists (io/file candidate)))]
+         candidate)))))
+
 (defn prepare-worktree! [project swarm-id runner-id]
-  (let [target (worktree-path project swarm-id runner-id)
+  (let [target (available-worktree-path project swarm-id runner-id)
         builder (doto (ProcessBuilder.
                        ^java.util.List
                        ["git" "-C" project "worktree" "add"
