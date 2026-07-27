@@ -40,6 +40,17 @@
       {:maintenance/disposition :stale-registration
        :maintenance/reason :worktree-missing}
 
+      ;; A real linked worktree has a `.git` file pointing at the canonical
+      ;; repository. A directory here is an independent repository that merely
+      ;; shares Tamaki's generated naming convention; never remove it through
+      ;; the source repository's worktree command.
+      (.isDirectory (io/file project ".git"))
+      {:maintenance/disposition :preserve
+       :maintenance/source source
+       :maintenance/project project
+       :maintenance/run (:agent.run/id run)
+       :maintenance/reason :independent-repository}
+
       (not terminal?)
       {:maintenance/disposition :active
        :maintenance/reason :run-not-terminal}

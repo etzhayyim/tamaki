@@ -62,6 +62,23 @@
                "/repo/tamaki"]]
              @calls)))))
 
+(deftest independent-repository-with-generated-name-is-preserved
+  (let [source (.toFile
+                (java.nio.file.Files/createTempDirectory
+                 "tamaki-maint-independent"
+                 (make-array java.nio.file.attribute.FileAttribute 0)))
+        project (java.io.File. (.getParentFile source)
+                               (str "." (.getName source)
+                                    "-tamaki-actor-grok-1"))
+        _ (.mkdirs (java.io.File. project ".git"))
+        result (maintenance/inspect-run
+                (assoc terminal-run
+                       :agent.run/source-project (.getPath source)
+                       :agent.run/project (.getPath project))
+                600002)]
+    (is (= :preserve (:maintenance/disposition result)))
+    (is (= :independent-repository (:maintenance/reason result)))))
+
 (deftest plan-deduplicates-a-worktree-and-keeps-the-safer-disposition
   (with-redefs [maintenance/inspect-run
                 (fn [run _]
