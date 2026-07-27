@@ -116,7 +116,10 @@
              "none")
            ". Work only on a listed runnable issue. Produce source, tests, "
            "review evidence, a redacted receipt, or an explicit blocked "
-           "result. The supervisor alone updates canonical EDN and reconciles "
+           "result. If the evidence shows that a credential, human action, "
+           "or unavailable external authority is required, return the "
+           "blocked result immediately instead of exploring unrelated code. "
+           "The supervisor alone updates canonical EDN and reconciles "
            "its forge projection after validating that evidence."))))
 
 (defn runner-pool [spec]
