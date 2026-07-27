@@ -11,6 +11,7 @@
             [kotoba.tamaki.model :as model]))
 
 (def default-grace-ms 300000)
+(def default-integration-frontier-size 8)
 
 (defn generated-worktree? [source project]
   (when (and source project)
@@ -150,19 +151,80 @@
          (sort-by (juxt :maintenance/disposition :maintenance/project))
          vec)))
 
+(defn- changed-path [porcelain-line]
+  (let [path (if (> (count porcelain-line) 3)
+               (subs porcelain-line 3)
+               porcelain-line)]
+    (last (str/split path #" -> "))))
+
+(defn- evidence-key [item]
+  (if-let [head (:maintenance/head item)]
+    [:commit head]
+    [:paths (->> (:maintenance/paths item)
+                 (map changed-path)
+                 sort
+                 vec)]))
+
+(defn- source-path? [path]
+  (not (or (str/includes? path "/.cpcache/")
+           (str/starts-with? path ".cpcache/")
+           (str/ends-with? path ".basis")
+           (str/ends-with? path ".cp")
+           (str/ends-with? path ".manifest"))))
+
+(defn integration-frontier
+  "Collapse equivalent preserved outputs and rank the smallest review frontier.
+  Unique commits come first, followed by dirty trees containing source changes;
+  cache-only evidence remains counted but cannot starve useful work."
+  ([plan] (integration-frontier plan default-integration-frontier-size))
+  ([plan limit]
+   (->> plan
+        (filter #(= :preserve (:maintenance/disposition %)))
+        (group-by evidence-key)
+        (map (fn [[evidence items]]
+               (let [representative (first (sort-by :maintenance/project items))
+                     paths (mapv changed-path
+                                 (:maintenance/paths representative))
+                     source? (or (= :unique-commit
+                                    (:maintenance/reason representative))
+                                 (some source-path? paths))]
+                 (merge
+                  (select-keys representative
+                               [:maintenance/run :maintenance/project
+                                :maintenance/source :maintenance/reason
+                                :maintenance/head])
+                  {:maintenance/evidence evidence
+                   :maintenance/paths paths
+                   :maintenance/duplicates (dec (count items))
+                   :maintenance/source-change? (boolean source?)}))))
+        (sort-by (juxt #(if (= :unique-commit (:maintenance/reason %)) 0 1)
+                       #(if (:maintenance/source-change? %) 0 1)
+                       #(str (:maintenance/project %))))
+        (take limit)
+        vec)))
+
 (defn summary [plan]
-  {:maintenance/candidates (count plan)
-   :maintenance/dispositions
-   (frequencies (map :maintenance/disposition plan))
-   :maintenance/conflicts
-   (mapv #(select-keys % [:maintenance/run :maintenance/project
-                          :maintenance/conflicts])
-         (filter #(= :conflict (:maintenance/disposition %)) plan))
-   :maintenance/preserved
-   (mapv #(select-keys % [:maintenance/run :maintenance/project
-                          :maintenance/reason :maintenance/paths
-                          :maintenance/head])
-         (filter #(= :preserve (:maintenance/disposition %)) plan))})
+  (let [preserved (filter #(= :preserve (:maintenance/disposition %)) plan)
+        groups (count (group-by evidence-key preserved))]
+    {:maintenance/candidates (count plan)
+     :maintenance/dispositions
+     (frequencies (map :maintenance/disposition plan))
+     :maintenance/conflicts
+     (mapv #(select-keys % [:maintenance/run :maintenance/project
+                            :maintenance/conflicts])
+           (filter #(= :conflict (:maintenance/disposition %)) plan))
+     :maintenance/preserved-count (count preserved)
+     :maintenance/evidence-groups groups
+     :maintenance/duplicate-evidence (- (count preserved) groups)
+     :maintenance/integration-frontier (integration-frontier plan)
+     ;; Full evidence remains available from `maintenance status`, but resident
+     ;; actors consume the bounded frontier above rather than an ever-growing
+     ;; prompt.
+     :maintenance/preserved
+     (mapv #(select-keys % [:maintenance/run :maintenance/project
+                            :maintenance/reason :maintenance/paths
+                            :maintenance/head])
+           preserved)}))
 
 (defn apply-plan! [plan]
   (mapv

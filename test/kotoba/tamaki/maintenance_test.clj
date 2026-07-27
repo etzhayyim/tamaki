@@ -145,3 +145,30 @@
       (is (= 1 (count result)))
       (is (= :conflict (:maintenance/disposition (first result))))
       (is (= :canonical-unmerged-paths (:maintenance/reason (first result)))))))
+
+(deftest integration-frontier-collapses-duplicates-and-prioritizes-code
+  (let [plan [{:maintenance/disposition :preserve
+               :maintenance/reason :dirty-worktree
+               :maintenance/project "/repo/cache"
+               :maintenance/paths [" M .cpcache/1.basis"]}
+              {:maintenance/disposition :preserve
+               :maintenance/reason :dirty-worktree
+               :maintenance/project "/repo/code-b"
+               :maintenance/paths [" M src/a.clj" "?? test/a_test.clj"]}
+              {:maintenance/disposition :preserve
+               :maintenance/reason :dirty-worktree
+               :maintenance/project "/repo/code-a"
+               :maintenance/paths [" M src/a.clj" "?? test/a_test.clj"]}
+              {:maintenance/disposition :preserve
+               :maintenance/reason :unique-commit
+               :maintenance/project "/repo/commit"
+               :maintenance/head "abc"}]
+        summary (maintenance/summary plan)
+        frontier (:maintenance/integration-frontier summary)]
+    (is (= 4 (:maintenance/preserved-count summary)))
+    (is (= 3 (:maintenance/evidence-groups summary)))
+    (is (= 1 (:maintenance/duplicate-evidence summary)))
+    (is (= "/repo/commit" (:maintenance/project (first frontier))))
+    (is (= "/repo/code-a" (:maintenance/project (second frontier))))
+    (is (= 1 (:maintenance/duplicates (second frontier))))
+    (is (false? (:maintenance/source-change? (last frontier))))))

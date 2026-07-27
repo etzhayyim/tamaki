@@ -241,19 +241,34 @@
                                    (not (:execute options)))
                       results (assoc :maintenance/results results))]
         (when (:execute options)
-          (store/append-event!
-           (store/default-root)
-           {:tamaki.event/version 1
-            :tamaki.event/id (str (random-uuid))
-            :tamaki.event/run "maintenance::git-lifecycle"
-            :tamaki.event/parent nil
-            :tamaki.event/kind :maintenance/completed
-            :tamaki.event/at (now)
-            :tamaki.event/data
-            (update receipt :maintenance/results
-                    #(mapv (fn [result]
-                             (dissoc result :maintenance/result))
-                           %))}))
+          (let [removed (count (filter #(and (= :remove
+                                                  (:maintenance/disposition %))
+                                               (:maintenance/applied? %))
+                                       results))
+                event-receipt
+                (-> receipt
+                    ;; The append-only event is control feedback, not an
+                    ;; archive of every worktree. Repeating the full evidence
+                    ;; list each round made observer projection grow
+                    ;; quadratically. The bounded frontier retains actionable
+                    ;; provenance; `maintenance status` remains the full view.
+                    (dissoc :maintenance/preserved :maintenance/results)
+                    (assoc :maintenance/removed removed
+                           :maintenance/failed
+                           (mapv #(select-keys
+                                   %
+                                   [:maintenance/run :maintenance/project
+                                    :maintenance/reason])
+                                 failed)))]
+            (store/append-event!
+             (store/default-root)
+             {:tamaki.event/version 1
+              :tamaki.event/id (str (random-uuid))
+              :tamaki.event/run "maintenance::git-lifecycle"
+              :tamaki.event/parent nil
+              :tamaki.event/kind :maintenance/completed
+              :tamaki.event/at (now)
+              :tamaki.event/data event-receipt})))
         (print-edn receipt)
         (if (seq failed) 1 0))
 
@@ -432,9 +447,14 @@
                          maintenance-feedback
                          [:maintenance/dispositions
                           :maintenance/conflicts
-                          :maintenance/preserved]))
-                       ". Judge cleanup and conflict work from this output; "
-                       "never delete preserved evidence.")
+                          :maintenance/preserved-count
+                          :maintenance/evidence-groups
+                          :maintenance/duplicate-evidence
+                          :maintenance/integration-frontier]))
+                       ". Review the integration frontier in order. Judge the "
+                       "source code and tests, integrate one compatible result "
+                       "through the normal review gate, and never delete "
+                       "preserved evidence merely to reduce the count.")
                spec)
         topology-sync (reconcile-actor-topology! spec execute?)
         before (actor-status spec)
