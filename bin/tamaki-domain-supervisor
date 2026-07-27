@@ -7,6 +7,7 @@ workspace_root="${TAMAKI_WORKSPACE:-${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/.
 control_root="${TAMAKI_CONTROL_ROOT:-$workspace_root/projects/.tamaki/tamaki-control}"
 actor_dir="${TAMAKI_ACTOR_SPEC_DIR:-$control_root/actors}"
 collector_dir="${TAMAKI_COLLECTOR_SPEC_DIR:-$control_root/collectors}"
+service_dir="${TAMAKI_SERVICE_SPEC_DIR:-$control_root/services}"
 reaction_collector_dir="${TAMAKI_REACTION_COLLECTOR_SPEC_DIR:-$collector_dir/content}"
 # Admission is globally coordinated in Tamaki. A resident default of one keeps
 # independently scheduled domain actors from racing past that decision.
@@ -58,6 +59,17 @@ while true; do
       bin/tamaki content collect --spec "$reaction_collector" || true
     fi
   done
+
+  # Convert the newest measured facts into a private canonical service issue
+  # topology before any agent chooses work. This deterministic governor is
+  # intentionally independent from model admission and remains live while
+  # implementation agents are throttled.
+  if [[ -d "$service_dir" ]]; then
+    for service_spec in "$service_dir"/*.edn; do
+      [[ -f "$service_spec" ]] || continue
+      bin/tamaki service reconcile --spec "$service_spec" --execute || true
+    done
+  fi
 
   pids=()
   count="${#specs[@]}"

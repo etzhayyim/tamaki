@@ -134,6 +134,21 @@ bin/tamaki content observe --file /path/to/runtime/reaction.edn
 bin/tamaki content status --id example
 ```
 
+Service operations use the same measured event stream to maintain a private
+issue topology:
+
+```bash
+tamaki service status --spec projects/.tamaki/tamaki-control/services/example.edn
+tamaki service reconcile --spec projects/.tamaki/tamaki-control/services/example.edn --execute
+```
+
+The deterministic service governor covers observation, incident response,
+support triage, response drafting, human decisions, acquisition, activation,
+conversion, retention, and 7/30-day outcome validation. Generated nodes are
+`:local-private` and non-projectable by default. Raw messages, provider IDs,
+addresses, credentials, and bodies remain in the injected mail/data adapter;
+only aggregate stocks and redacted result receipts enter Tamaki.
+
 The feedback decision prioritizes discovery, completion/retention, engagement,
 conversion, then a follow-up. Missing observations remain
 `:await-observation`; Tamaki never fabricates audience response. Drafting,

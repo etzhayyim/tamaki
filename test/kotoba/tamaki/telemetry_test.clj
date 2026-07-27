@@ -23,6 +23,24 @@
       (is (= 1200 (get-in result [:observation :stocks :traffic])))
       (is (= 5000 (get-in result [:observation :flows :revenue-jpy]))))))
 
+(deftest mapping-can-scale-provider-units-without-provider-specific-code
+  (let [file (java.io.File/createTempFile "tamaki-scaled-" ".edn")
+        now 1785024000000]
+    (spit file (pr-str {:as-of "2026-07-25"
+                        :conversion {:percent 12.5}}))
+    (let [result (telemetry/collect
+                  {:collector/id :scaled
+                   :collector/domain :example.test
+                   :collector/source (.getPath file)
+                   :collector/mappings
+                   {:rates {:paid-conversion-rate
+                            {:path [:conversion :percent]
+                             :scale 0.01}}}}
+                  now)]
+      (is (= 0.125
+             (get-in result
+                     [:observation :rates :paid-conversion-rate]))))))
+
 (deftest stale-snapshot-has-zero-confidence
   (let [file (java.io.File/createTempFile "tamaki-stale-" ".edn")]
     (spit file (pr-str {:as-of "2020-01-01" :value 1}))

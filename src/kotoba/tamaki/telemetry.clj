@@ -29,7 +29,12 @@
     (vector? selector) (get-in snapshot selector)
     (number? selector) selector
     (nil? selector) nil
-    :else (throw (ex-info "Telemetry selector must be a path vector or number"
+    (map? selector)
+    (let [value (get-in snapshot (:path selector))
+          value (if (nil? value) (:default selector) value)]
+      (when (number? value)
+        (* (double value) (double (or (:scale selector) 1.0)))))
+    :else (throw (ex-info "Telemetry selector must be a path, number, or transform"
                           {:selector selector}))))
 
 (defn- map-values [snapshot mappings]

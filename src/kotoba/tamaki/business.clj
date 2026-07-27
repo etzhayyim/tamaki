@@ -5,13 +5,16 @@
 
 (def stock-keys
   [:traffic :unique-visitors :qualified-leads :conversations :proposals
-   :won-customers :active-customers :mrr-jpy :cash-jpy])
+   :won-customers :active-customers :mrr-jpy :cash-jpy
+   :untriaged-inbox :support-backlog :awaiting-human :open-incidents])
 
 (def flow-keys
   [:new-qualified-leads :new-conversations :new-proposals :new-wins
    :activations :churned-customers :delta-mrr-jpy :revenue-jpy
    :experiments-shipped :accepted-patches :agent-cost-jpy
-   :operational-cost-jpy :churn-risk-mrr-jpy])
+   :operational-cost-jpy :churn-risk-mrr-jpy
+   :inbound-support :triaged-support :drafted-replies :approved-replies
+   :resolved-support :incidents-opened :incidents-recovered])
 
 (def rate-keys
   [:activation-rate :paid-conversion-rate :churn-rate :confidence])

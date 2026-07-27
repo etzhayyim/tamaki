@@ -22,6 +22,7 @@
             [kotoba.tamaki.runners-test]
             [kotoba.tamaki.result-test]
             [kotoba.tamaki.result-evaluation-test]
+            [kotoba.tamaki.service-test]
             [kotoba.tamaki.store-test]
             [kotoba.tamaki.supervisor-test]
             [kotoba.tamaki.telemetry-test]
@@ -53,6 +54,7 @@
                                'kotoba.tamaki.runners-test
                                'kotoba.tamaki.result-test
                                'kotoba.tamaki.result-evaluation-test
+                               'kotoba.tamaki.service-test
                                'kotoba.tamaki.store-test
                                'kotoba.tamaki.supervisor-test
                                'kotoba.tamaki.telemetry-test

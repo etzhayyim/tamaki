@@ -21,6 +21,7 @@
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.result-evaluation :as result-evaluation]
+            [kotoba.tamaki.service :as service]
             [kotoba.tamaki.store :as store]
             [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.telemetry :as telemetry]
@@ -56,6 +57,7 @@
        "  tamaki kpi status [--targets FILE]\n"
        "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
        "  tamaki kpi collect --spec COLLECTOR.edn [--targets FILE]\n"
+       "  tamaki service status|reconcile --spec SERVICE.edn [--execute]\n"
        "  tamaki content plan --spec LOOP.edn --artifact ARTIFACT.edn [--approve]\n"
        "  tamaki content observe --file REACTION.edn\n"
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
@@ -158,6 +160,44 @@
         (if (:collector/fresh? result) 0 1)))
 
     (throw (ex-info "Usage: tamaki kpi status|observe|collect ..." {}))))
+
+(defn service!
+  [{:keys [positional options]}]
+  (let [action (first positional)
+        path (:spec options)]
+    (when (str/blank? path)
+      (throw (ex-info
+              "service status|reconcile requires --spec SERVICE.edn" {})))
+    (let [spec (service/read-spec path)
+          summary (business-summary
+                   (cond-> {:domain (:service/domain spec)}
+                     (:service/business-targets spec)
+                     (assoc :targets (:service/business-targets spec))))
+          topology (service/topology spec summary (now))
+          topology (assoc topology
+                          :topology/file (:service/topology-file spec))
+          result {:service/id (:service/id spec)
+                  :service/domain (:service/domain spec)
+                  :business/status (:business/status summary)
+                  :topology/file (:service/topology-file spec)
+                  :topology/open
+                  (count (filter #(= :open (:issue/status %))
+                                 (:topology/issues topology)))
+                  :topology/walk (service/active-walk topology)}]
+      (case action
+        "status" (do (print-edn result) 0)
+        "reconcile"
+        (do
+          (when (:execute options)
+            (service/write-topology! (:service/topology-file spec) topology)
+            (store/append-event! (store/default-root)
+                                 (service/event topology (now))))
+          (print-edn (assoc result :service/executed?
+                            (boolean (:execute options))))
+          0)
+        (throw (ex-info
+                "Usage: tamaki service status|reconcile --spec SERVICE.edn"
+                {}))))))
 
 (defn content!
   [{:keys [positional options]}]
@@ -2148,6 +2188,7 @@
       "voice" (or (voice! parsed) 0)
       "actor" (actor! parsed)
       "kpi" (kpi! parsed)
+      "service" (service! parsed)
       "content" (content! parsed)
       "finance" (finance! parsed)
       "maintenance" (maintenance! parsed)

@@ -25,6 +25,7 @@ control/
 ├── organisms/
 ├── loops/
 ├── domains.edn
+├── services/                 # service policies; no customer or message data
 └── .gitignore
 ```
 
