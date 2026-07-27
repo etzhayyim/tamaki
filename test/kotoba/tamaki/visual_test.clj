@@ -129,6 +129,41 @@
     (is (= ["One or more provider usage cards are not visible"]
            (:visual/findings result)))))
 
+(deftest evaluate-observatory-clarifies-missing-cards-on-undersized-capture
+  ;; A shrunk Observatory window can still pass through capture!'s
+  ;; screen-capture fallback (which has no size gate) and reach OCR at a
+  ;; resolution known to omit provider usage cards. Without this clarifying
+  ;; finding, that looks identical to a real detection regression and drives
+  ;; the loop to re-chase the same generic finding cycle after cycle.
+  (let [metrics {:canvas/stddev 12.0 :image/width 767 :image/height 548}
+        text "tamaki observatory codex claude activity"
+        result (visual/evaluate-observatory metrics text)]
+    (is (= :degraded (:visual/status result)))
+    (is (= ["One or more provider usage cards are not visible"
+            "Captured image is 767x548, below the 1000x700 minimum needed to read provider usage cards reliably; resize the Observatory window before treating this as a functional regression"]
+           (:visual/findings result)))))
+
+(deftest evaluate-observatory-omits-undersized-note-when-image-is-normal-sized
+  ;; Regression guard: a real missing-card detection at a normal capture size
+  ;; must not be masked or annotated with the sizing hint.
+  (let [metrics {:canvas/stddev 12.0 :image/width 1280 :image/height 900}
+        text "tamaki observatory codex claude activity"
+        result (visual/evaluate-observatory metrics text)]
+    (is (= :degraded (:visual/status result)))
+    (is (= ["One or more provider usage cards are not visible"]
+           (:visual/findings result)))))
+
+(deftest evaluate-observatory-omits-undersized-note-when-size-is-unknown
+  ;; Regression guard: callers that never supply :image/width, :image/height
+  ;; (e.g. all the pre-existing metrics-only tests above) must see unchanged
+  ;; behaviour — missing size data is not treated as undersized.
+  (let [metrics {:canvas/stddev 12.0}
+        text "tamaki observatory codex claude activity"
+        result (visual/evaluate-observatory metrics text)]
+    (is (= :degraded (:visual/status result)))
+    (is (= ["One or more provider usage cards are not visible"]
+           (:visual/findings result)))))
+
 (deftest provider-usage-cards-visible-accepts-exact-labels
   (is (true? (visual/provider-usage-cards-visible?
               "tamaki observatory codex claude grok activity")))

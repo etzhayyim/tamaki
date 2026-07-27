@@ -199,6 +199,22 @@
     (or (and has-codex has-claude has-grok)
         (and (>= stats 3) (>= named 2)))))
 
+(defn- undersized-capture?
+  "True when canvas metrics report an image smaller than the minimum size at
+  which Observatory provider usage cards remain legible (see
+  min-webkit-width/min-webkit-height). A capture!'d screen-capture image never
+  passes through the webkit freshness/size gate, so a shrunk Observatory
+  window can still reach OCR and produce the same ambiguous 'cards are not
+  visible' finding as a real detection regression. Missing :image/width or
+  :image/height (e.g. callers exercising findings unrelated to image size) is
+  treated as size-unknown, not undersized, so existing behaviour is unchanged."
+  [metrics]
+  (let [width (:image/width metrics)
+        height (:image/height metrics)]
+    (boolean (and width height
+                  (or (< width min-webkit-width)
+                      (< height min-webkit-height))))))
+
 (defn evaluate-observatory
   "Pure decision logic for Observatory visual health: given CoreGraphics canvas
   metrics and lower-cased OCR text, return the verdict map (:visual/status,
@@ -215,6 +231,14 @@
                    (conj "Observatory title was not recognized")
                    (not (provider-usage-cards-visible? text))
                    (conj "One or more provider usage cards are not visible")
+                   (and (not (provider-usage-cards-visible? text))
+                        (undersized-capture? metrics))
+                   (conj (str "Captured image is " (:image/width metrics) "x"
+                              (:image/height metrics) ", below the "
+                              min-webkit-width "x" min-webkit-height
+                              " minimum needed to read provider usage cards"
+                              " reliably; resize the Observatory window before"
+                              " treating this as a functional regression"))
                    (not (str/includes? text "activity"))
                    (conj "Live activity panel was not recognized"))
         degraded? (seq findings)]
