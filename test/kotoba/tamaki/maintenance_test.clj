@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.maintenance-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.maintenance :as maintenance]))
 
@@ -93,3 +94,54 @@
              :maintenance/disposition :preserve}]
            (maintenance/plan [{:agent.run/id "clean"}
                               {:agent.run/id "dirty"}] 1)))))
+
+(defn- temp-dir [prefix]
+  (.toFile
+   (java.nio.file.Files/createTempDirectory
+    prefix (make-array java.nio.file.attribute.FileAttribute 0))))
+
+(deftest inspect-source-conflict-is-nil-when-the-canonical-repo-is-clean
+  (with-redefs [delivery/*process-fn* (fn [_ _] {:exit 0 :out "" :err ""})]
+    (let [source (temp-dir "tamaki-maint-clean-source")]
+      (is (nil? (maintenance/inspect-source-conflict (.getPath source)))))))
+
+(deftest inspect-source-conflict-detects-unmerged-paths-on-the-canonical-repo
+  (with-redefs [delivery/*process-fn*
+                (fn [_ _] {:exit 0 :out "src/a.clj\nsrc/b.clj\n" :err ""})]
+    (let [source (temp-dir "tamaki-maint-conflict-source")
+          result (maintenance/inspect-source-conflict (.getPath source))]
+      (is (= :conflict (:maintenance/disposition result)))
+      (is (= :canonical-unmerged-paths (:maintenance/reason result)))
+      (is (= ["src/a.clj" "src/b.clj"] (:maintenance/conflicts result)))
+      (is (= (.getPath source) (:maintenance/source result)))
+      (is (= (.getPath source) (:maintenance/project result))))))
+
+(deftest inspect-source-conflict-detects-a-stale-index-lock
+  (with-redefs [delivery/*process-fn* (fn [_ _] {:exit 0 :out "" :err ""})]
+    (let [source (temp-dir "tamaki-maint-lock-source")
+          git-dir (io/file source ".git")
+          lock (io/file git-dir "index.lock")]
+      (.mkdirs git-dir)
+      (spit lock "")
+      (let [result (maintenance/inspect-source-conflict (.getPath source))]
+        (is (= :conflict (:maintenance/disposition result)))
+        (is (= :canonical-index-lock (:maintenance/reason result)))
+        (is (= [(.getAbsolutePath lock)] (:maintenance/conflicts result)))))))
+
+(deftest inspect-source-conflict-is-nil-without-a-real-source-directory
+  (is (nil? (maintenance/inspect-source-conflict "/nonexistent/tamaki-maint-path")))
+  (is (nil? (maintenance/inspect-source-conflict nil))))
+
+(deftest plan-surfaces-a-real-unstubbed-canonical-source-conflict
+  (with-redefs [maintenance/inspect-run (constantly {:maintenance/disposition :ignored})
+                delivery/*process-fn*
+                (fn [argv _]
+                  (if (= "diff" (nth argv 3))
+                    {:exit 0 :out "src/conflicted.clj\n" :err ""}
+                    {:exit 0 :out "" :err ""}))]
+    (let [source (temp-dir "tamaki-maint-plan-source")
+          run {:agent.run/id "run-1" :agent.run/source-project (.getPath source)}
+          result (maintenance/plan [run] 1)]
+      (is (= 1 (count result)))
+      (is (= :conflict (:maintenance/disposition (first result))))
+      (is (= :canonical-unmerged-paths (:maintenance/reason (first result)))))))
