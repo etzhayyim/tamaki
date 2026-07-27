@@ -215,6 +215,17 @@
                   (or (< width min-webkit-width)
                       (< height min-webkit-height))))))
 
+(defn live-activity-panel-visible?
+  "True when OCR evidence shows the Observatory live-activity / active-work panel.
+
+  Prefer the legacy literal 'activity' (covers 'live activity' headings). The
+  current UI heading is 'Active work'; Vision OCR of healthy frames has been
+  observed to emit only that phrase with no substring 'activity', which falsely
+  degraded visual health every cycle. Accept either label."
+  [text]
+  (or (str/includes? text "activity")
+      (str/includes? text "active work")))
+
 (defn evaluate-observatory
   "Pure decision logic for Observatory visual health: given CoreGraphics canvas
   metrics and lower-cased OCR text, return the verdict map (:visual/status,
@@ -239,7 +250,7 @@
                               " minimum needed to read provider usage cards"
                               " reliably; resize the Observatory window before"
                               " treating this as a functional regression"))
-                   (not (str/includes? text "activity"))
+                   (not (live-activity-panel-visible? text))
                    (conj "Live activity panel was not recognized"))
         degraded? (seq findings)]
     {:visual/status (if degraded? :degraded :healthy)

@@ -190,12 +190,39 @@
   (is (false? (visual/provider-usage-cards-visible?
                "tamaki observatory codex claude activity token-processing"))))
 
+(deftest live-activity-panel-visible-accepts-legacy-activity-label
+  (is (true? (visual/live-activity-panel-visible?
+              "tamaki observatory codex claude grok activity")))
+  (is (true? (visual/live-activity-panel-visible? "live activity"))))
+
+(deftest live-activity-panel-visible-accepts-active-work-heading
+  ;; Observed Vision OCR of a healthy Observatory frame (2200x1520 webkit
+  ;; capture): the panel heading is 'Active work' with no substring
+  ;; 'activity'. Without this acceptance, a fully rendered panel is
+  ;; reported as missing every cycle.
+  (is (true? (visual/live-activity-panel-visible?
+              "current objective active work now grok 1m ago")))
+  (is (false? (visual/live-activity-panel-visible?
+               "tamaki observatory codex claude grok")))
+  ;; 'active' alone (e.g. ambient/active flags) must not count.
+  (is (false? (visual/live-activity-panel-visible?
+               "tamaki observatory ambient active off"))))
+
 (deftest evaluate-observatory-flags-missing-activity-panel
   (let [metrics {:canvas/stddev 12.0}
         text "tamaki observatory codex claude grok"
         result (visual/evaluate-observatory metrics text)]
     (is (= :degraded (:visual/status result)))
     (is (= ["Live activity panel was not recognized"] (:visual/findings result)))))
+
+(deftest evaluate-observatory-accepts-active-work-as-activity-panel
+  ;; End-to-end: healthy canvas + providers + current UI heading => healthy.
+  (let [metrics {:canvas/stddev 12.0}
+        text (str "tamaki observatory codex claude grok "
+                  "current objective active work now")
+        result (visual/evaluate-observatory metrics text)]
+    (is (= :healthy (:visual/status result)))
+    (is (= [] (:visual/findings result)))))
 
 (deftest evaluate-observatory-joins-multiple-findings
   (let [metrics {:canvas/stddev 2.0}
