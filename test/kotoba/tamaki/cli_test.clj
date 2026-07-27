@@ -38,6 +38,34 @@
                   (call ["consult" "CI confirmation" "--silent"]))))
       (is (false? (:voice? (second @requests)))))))
 
+(deftest mail-review-displays-private-content-but-records-only-a-digest
+  (let [draft-file (java.io.File/createTempFile "tamaki-mail-draft-" ".edn")
+        request (atom nil)
+        draft {:org :private-example
+               :account :support
+               :action :mail/send
+               :recipients ["private@example.test"]
+               :subject "Private subject"
+               :body "PRIVATE BODY MUST NOT ENTER THE EVENT"
+               :attachments [{:name "private.pdf"
+                              :digest "sha256:file"
+                              :size 10}]}]
+    (spit draft-file (pr-str draft))
+    (with-redefs [supervisor/consult-private!
+                  (fn [value]
+                    (reset! request value)
+                    {:run-id "human-review" :decision :approved})]
+      (let [{:keys [exit value]}
+            (call ["mail" "review" "--file" (.getPath draft-file)])]
+        (is (zero? exit))
+        (is (= :approved (:mail.approval/status value)))
+        (is (.contains (get-in @request [:display-request :summary])
+                       "PRIVATE BODY MUST NOT ENTER THE EVENT"))
+        (is (not (.contains (pr-str (:record-request @request))
+                            "PRIVATE BODY MUST NOT ENTER THE EVENT")))
+        (is (.contains (get-in @request [:record-request :impact])
+                       "draft-digest"))))))
+
 (deftest business-feedback-enters-the-actor-decision-context
   (let [spec {:actor/objective "Grow verified value"}
         feedback #:business{:status :observed
