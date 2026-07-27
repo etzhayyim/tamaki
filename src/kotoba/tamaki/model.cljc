@@ -100,21 +100,29 @@
     :run/held (transition run :held at data)
     ;; Older supervisor consultation records omitted leased/started. Preserve
     ;; their audit history without allowing callers to bypass `transition`.
-    :run/succeeded (if (= :queued (:agent.run/status run))
+    :run/succeeded (cond
+                     (= :succeeded (:agent.run/status run)) run
+                     (= :queued (:agent.run/status run))
                      (merge run data
                             {:agent.run/status :succeeded
                              :agent.run/updated-at at
                              :agent.run/recovered-lifecycle true})
-                     (transition run :succeeded at data))
-    :run/failed (if (= :queued (:agent.run/status run))
+                     :else (transition run :succeeded at data))
+    :run/failed (cond
+                  (= :failed (:agent.run/status run)) run
+                  (= :queued (:agent.run/status run))
                   (merge run data
                          {:agent.run/status :failed
                           :agent.run/updated-at at
                           :agent.run/recovered-lifecycle true})
-                  (transition run :failed at data))
+                  :else (transition run :failed at data))
     :run/requeued (transition run :queued at data)
-    :run/rejected (transition run :rejected at data)
-    :run/cancelled (transition run :cancelled at data)
+    :run/rejected (if (= :rejected (:agent.run/status run))
+                    run
+                    (transition run :rejected at data))
+    :run/cancelled (if (= :cancelled (:agent.run/status run))
+                     run
+                     (transition run :cancelled at data))
     run))
 
 (defn fold-events

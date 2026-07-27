@@ -23,11 +23,25 @@
                 [(event :run/started 900)
                  (event :patch/created 910)
                  (event :review/independent 920)
-                 (event :patch/integrated 930)]
+                 (assoc (event :patch/integrated 930)
+                        :tamaki.event/data {:patch/id "p1"})
+                 (assoc (event :result/evaluated 940)
+                        :tamaki.event/data
+                        {:evaluation/result "result/p1"})]
                 [] 1000 200)]
     (is (= :continue (:kaizen/decision result)))
     (is (= 1.0 (get-in result
                        [:kaizen/evidence :review->integrate])))))
+
+(deftest integration-without-evaluation-becomes-control-priority
+  (let [result
+        (kaizen/evaluate
+         [(assoc (event :patch/integrated 900)
+                 :tamaki.event/data {:patch/id "p1"})]
+         [] 1000 200)]
+    (is (= :evaluate-integrated-results (:kaizen/decision result)))
+    (is (= ["result/p1"]
+           (get-in result [:kaizen/evidence :evaluation-debt])))))
 
 (deftest loop-evaluator-replicas-are-observe-only
   (let [run (actor/replica-run
@@ -78,3 +92,51 @@
   (let [result (kaizen/evaluate [] [] 1000 200)]
     (is (= :observe (:kaizen/decision result)))
     (is (zero? (:kaizen/score result)))))
+
+(deftest spawn-admission-enforces-global-wip-and-keeps-observer-alive
+  (let [evaluation {:kaizen/recommendations []}
+        runs (repeat 4 {:agent.run/status :running})
+        implementation {:actor/capabilities #{:implementation}}
+        observer {:actor/capabilities #{:loop-evaluation}}]
+    (is (= :global-wip-limit
+           (:reason (kaizen/spawn-admission evaluation runs implementation))))
+    (is (false? (:admitted?
+                 (kaizen/spawn-admission evaluation runs implementation))))
+    (is (false? (:admitted?
+                 (kaizen/spawn-admission evaluation runs observer))))
+    (is (:admitted? (kaizen/spawn-admission evaluation [] observer)))))
+
+(deftest review-bottleneck-admits-only-review-capable-work
+  (let [evaluation {:kaizen/recommendations
+                    [:heal-review-integration-bottleneck]}
+        implement {:actor/capabilities #{:implementation}}
+        reviewer {:actor/capabilities #{:implementation :review}}
+        rejected (kaizen/spawn-admission evaluation [] implement)
+        admitted (kaizen/spawn-admission evaluation [] reviewer)]
+    (is (= :review-integration-drain (:reason rejected)))
+    (is (false? (:admitted? rejected)))
+    (is (= :review-priority (:reason admitted)))
+    (is (re-find #"do not start a new issue"
+                 (:objective-prefix admitted)))))
+
+(deftest low-yield-starts-also-redirect-capacity-to-existing-results
+  (let [evaluation {:kaizen/recommendations
+                    [:redirect-issue-selection :prune-no-change-loop]}
+        admitted (kaizen/spawn-admission
+                  evaluation []
+                  {:actor/capabilities #{:implementation :review}})]
+    (is (:admitted? admitted))
+    (is (= :review-priority (:reason admitted)))
+    (is (some? (:objective-prefix admitted)))))
+
+(deftest failed-events-retain-actionable-categories
+  (let [result (kaizen/evaluate
+                [(assoc (event :run/failed 900)
+                        :tamaki.event/data {:actor/reason :lease-expired})
+                 (assoc (event :run/failed 910)
+                        :tamaki.event/data
+                        {:failure/category :verification-failed})]
+                [] 1000 200)]
+    (is (= {:stale 1 :verification 1}
+           (get-in result
+                   [:kaizen/evidence :failure-categories])))))

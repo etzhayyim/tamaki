@@ -455,6 +455,13 @@ are preserved. Every executed import/project writes a receipt to Tamaki's
 private event store. Actors with `:topology-sync` run the projector at their
 reconciliation boundary.
 
+Email, message, and telephone follow-up can participate in the same topology.
+One provider interaction becomes one `:issue/type :communication` node; its
+`:issue/blocked-by` edges can gate code or human work. Raw bodies, addresses,
+numbers, recordings, and credentials remain local. Only redacted outcome
+metadata and stable digests may be attached to Issue → Source → Patch → Review
+receipts. See [ADR 0004](docs/adr/0004-communication-as-issue-and-redacted-pr-history.md).
+
 ### Lifecycle maintenance
 
 Generated actor/swarm worktrees are leases, not permanent checkouts:
@@ -470,3 +477,21 @@ already reachable from the canonical repository. Dirty changes, unique commits,
 merge conflicts, and index locks are preserved and reported to the
 loop-gardener. The resident supervisor executes this deterministic collector
 after every actor reconciliation round; it never uses force removal.
+
+## Evidence-gated result evaluation
+
+Merged code enters an `integrated-unvalidated` stock; integration alone is not
+counted as value. Record a versioned score vector and its evidence, compare
+alternative results within one issue, then attach seven-day and thirty-day
+production observations:
+
+```sh
+bin/tamaki result evaluate --file examples/result-evaluation.example.edn
+bin/tamaki result tournament --file examples/result-tournament.example.edn
+bin/tamaki result validate --file examples/result-validation.example.edn
+bin/tamaki result status
+```
+
+The Observatory projects evaluation debt, validated value, and regression debt
+from the same durable event stream. See
+[ADR-0005](docs/adr/0005-evidence-gated-result-evaluation.md).

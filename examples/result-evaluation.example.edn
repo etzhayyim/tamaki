@@ -1,0 +1,27 @@
+{:evaluation/id :evaluation/example-patch
+ :evaluation/result "result/example-patch"
+ :evaluation/rubric-version 1
+ :evaluation/scores
+ {:correctness 1.0
+  :verification 1.0
+  :integration 0.9
+  :measured-impact 0.4
+  :durability 0.8
+  :efficiency 0.6
+  :novelty 0.3
+  :safety 1.0
+  :learning-value 0.7}
+ :evaluation/gates
+ {:tests-green? true
+  :independent-review? true
+  :secret-scan-clean? true
+  :authority-correct? true
+  :human-consent? true}
+ :evaluation/evidence
+ [{:evidence/type :test
+   :evidence/ref "artifacts/test-report.edn"}
+  {:evidence/type :review
+   :evidence/ref "artifacts/review.edn"}]
+ :evaluation/confidence 0.8
+ :evaluation/risk-penalty 0.0}
+

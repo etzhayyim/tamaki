@@ -8,7 +8,9 @@ control_root="${TAMAKI_CONTROL_ROOT:-$workspace_root/projects/.tamaki/tamaki-con
 actor_dir="${TAMAKI_ACTOR_SPEC_DIR:-$control_root/actors}"
 collector_dir="${TAMAKI_COLLECTOR_SPEC_DIR:-$control_root/collectors}"
 reaction_collector_dir="${TAMAKI_REACTION_COLLECTOR_SPEC_DIR:-$collector_dir/content}"
-concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-3}"
+# Admission is globally coordinated in Tamaki. A resident default of one keeps
+# independently scheduled domain actors from racing past that decision.
+concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-1}"
 cd "$tamaki_root"
 export TAMAKI_WORKSPACE="$workspace_root"
 export TAMAKI_WORKSPACE_ROOT="$workspace_root"

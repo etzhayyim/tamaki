@@ -44,6 +44,21 @@
     (is (= :succeeded (:agent.run/status folded)))
     (is (true? (:agent.run/recovered-lifecycle folded)))))
 
+(deftest duplicate-terminal-events-are-idempotent
+  (let [run (assoc (model/agent-run {:goal "stale recovery"} 1000)
+                   :agent.run/id "run-duplicate")
+        leased (assoc run :agent.run/status :leased)
+        running (assoc run :agent.run/status :running)
+        failed (model/event running :run/failed 1003
+                            {:failure/category :stale-run})
+        events [(model/event run :run/submitted 1000 {:run run})
+                (model/event run :run/leased 1001 {})
+                (model/event leased :run/started 1002 {})
+                failed failed]
+        folded (get (model/fold-events events) "run-duplicate")]
+    (is (= :failed (:agent.run/status folded)))
+    (is (= 1003 (:agent.run/updated-at folded)))))
+
 (deftest event-fold-and-resume
   (let [run (assoc (model/agent-run {:goal "fix it"} 1000)
                    :agent.run/id "run-1")

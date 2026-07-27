@@ -177,12 +177,21 @@
             (str "priority:" (name (or (:issue/priority issue) :p2)))}
     (seq (:issue/blocked-by issue)) (conj "blocked")))
 
+(defn projectable-issue?
+  "Private control-plane observations must never cross a forge boundary.
+  Explicit denial wins over every projection ID or topology setting."
+  [issue]
+  (and (not= false (:issue/projectable? issue))
+       (not= :local-private (:issue/visibility issue))
+       (not= :communication (:issue/type issue))))
+
 (defn radicle-plan
   "Only Tamaki-managed labels are removed; human-added labels are preserved."
   [topology observed]
   (let [by-id (into {} (map (juxt :forge/id identity)) observed)
         rid (:topology/radicle-repo topology)]
     (->> (:topology/issues topology)
+         (filter projectable-issue?)
          (mapcat
           (fn [issue]
             (if-let [id (or (projection-id issue :radicle)

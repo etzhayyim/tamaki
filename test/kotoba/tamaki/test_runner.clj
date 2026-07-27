@@ -6,6 +6,7 @@
             [kotoba.tamaki.bridge-test]
             [kotoba.tamaki.adapters-test]
             [kotoba.tamaki.cli-test]
+            [kotoba.tamaki.communication-test]
             [kotoba.tamaki.content-test]
             [kotoba.tamaki.delivery-test]
             [kotoba.tamaki.evolution-test]
@@ -20,6 +21,7 @@
             [kotoba.tamaki.model-test]
             [kotoba.tamaki.runners-test]
             [kotoba.tamaki.result-test]
+            [kotoba.tamaki.result-evaluation-test]
             [kotoba.tamaki.store-test]
             [kotoba.tamaki.supervisor-test]
             [kotoba.tamaki.telemetry-test]
@@ -36,6 +38,7 @@
                                'kotoba.tamaki.bridge-test
                                'kotoba.tamaki.adapters-test
                                'kotoba.tamaki.cli-test
+                               'kotoba.tamaki.communication-test
                                'kotoba.tamaki.content-test
                                'kotoba.tamaki.delivery-test
                                'kotoba.tamaki.evolution-test
@@ -49,6 +52,7 @@
                                'kotoba.tamaki.kaizen-test
                                'kotoba.tamaki.runners-test
                                'kotoba.tamaki.result-test
+                               'kotoba.tamaki.result-evaluation-test
                                'kotoba.tamaki.store-test
                                'kotoba.tamaki.supervisor-test
                                'kotoba.tamaki.telemetry-test

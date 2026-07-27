@@ -1,0 +1,9 @@
+{:evaluation-id :evaluation/example-patch
+ :result "result/example-patch"
+ :window :seven-day
+ :observed-score 0.75
+ :regression? false
+ :evidence
+ [{:evidence/type :production-observation
+   :evidence/ref "observations/example-patch-7d.edn"}]}
+

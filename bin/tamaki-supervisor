@@ -91,13 +91,11 @@ trap cleanup EXIT INT TERM
         actor_specs+=("$discovered_spec")
       done
     fi
-    actor_reconcile_pids=()
+    # Reconcile sequentially. Parallel reconciliation lets every ActorSpec
+    # observe the same free capacity and collectively overshoot the global WIP
+    # limit before any submitted run becomes visible.
     for current_actor_spec in "${actor_specs[@]}"; do
-      bin/tamaki actor reconcile "$current_actor_spec" --execute &
-      actor_reconcile_pids+=("$!")
-    done
-    for reconcile_pid in "${actor_reconcile_pids[@]}"; do
-      wait "$reconcile_pid" || true
+      bin/tamaki actor reconcile "$current_actor_spec" --execute || true
     done
     # Deterministic lifecycle collection. Only clean terminal worktrees whose
     # HEAD is already reachable from the canonical checkout are removed.

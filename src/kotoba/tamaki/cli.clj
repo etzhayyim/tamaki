@@ -16,9 +16,11 @@
             [kotoba.tamaki.loop-registry :as loop-registry]
             [kotoba.tamaki.lineage :as lineage]
             [kotoba.tamaki.intelligence :as intelligence]
+            [kotoba.tamaki.kaizen :as kaizen]
             [kotoba.tamaki.maintenance :as maintenance]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
+            [kotoba.tamaki.result-evaluation :as result-evaluation]
             [kotoba.tamaki.store :as store]
             [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.telemetry :as telemetry]
@@ -45,6 +47,8 @@
        "  tamaki deliver <run-id> --issue ID --paths a,b --message TEXT\n"
        "  tamaki review <patch-id> --run RUN-ID --tests EVIDENCE\n"
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
+       "  tamaki result evaluate|tournament|validate --file FACT.edn\n"
+       "  tamaki result status\n"
        "  tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ...\n"
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
@@ -435,7 +439,24 @@
 
 (defn reconcile-actor!
   [spec execute?]
-  (let [content-id (:actor/content-id spec)
+  (let [initial-runs (remove nil? (vals (runs)))
+        _ (doseq [run (filter #(actor/stale-run? % (now)) initial-runs)]
+            (emit! run :run/failed
+                   {:actor/id (:agent.run/actor run)
+                    :actor/reason :lease-expired
+                    :failure/category :stale-run
+                    :agent.run/previous-status (:agent.run/status run)}))
+        ;; Re-fold after global stale recovery so admission observes the
+        ;; capacity that was actually reclaimed, including legacy non-actor
+        ;; runs that no ActorSpec-specific reconciliation could reap.
+        all-runs (remove nil? (vals (runs)))
+        loop-evaluation (kaizen/evaluate (events) all-runs (now))
+        admission (kaizen/spawn-admission loop-evaluation all-runs spec)
+        spec (cond-> spec
+               (:objective-prefix admission)
+               (update :actor/objective str "\n"
+                       (:objective-prefix admission)))
+        content-id (:actor/content-id spec)
         feedback (when content-id (content/status (events) content-id))
         business-feedback
         (when (or (:actor/business-domain spec)
@@ -481,7 +502,10 @@
                        "preserved evidence merely to reduce the count.")
                spec)
         topology-sync (reconcile-actor-topology! spec execute?)
-        before (actor-status spec)
+        planned (actor-status spec)
+        before (if (:admitted? admission)
+                 planned
+                 (assoc planned :spawn 0))
         existing-count (count (actor/actor-runs spec
                                                 (remove nil? (vals (runs)))))
         actor-token (str/replace (str (:actor/id spec)) #"[^A-Za-z0-9]+" "-")]
@@ -539,6 +563,8 @@
           after (actor-status spec)]
       (print-edn
        (cond-> (assoc after
+                      :admission admission
+                      :kaizen/decision (:kaizen/decision loop-evaluation)
                       :spawned
                       (mapv #(select-keys
                               % [:agent.run/id :agent.run/replica
@@ -1162,6 +1188,90 @@
 (defn receipt! [run kind data]
   (emit! run kind (assoc data :receipt/version 1)))
 
+(defn append-result-event! [kind data]
+  (store/append-event!
+   (store/default-root)
+   {:tamaki.event/version 1
+    :tamaki.event/id (str (random-uuid))
+    :tamaki.event/run (str "result::"
+                           (or (:evaluation/result data)
+                               (:validation/result data)
+                               (:tournament/issue data)
+                               "unknown"))
+    :tamaki.event/parent nil
+    :tamaki.event/kind kind
+    :tamaki.event/at (now)
+    :tamaki.event/data data}))
+
+(defn- read-edn-fact [path]
+  (when (str/blank? path)
+    (throw (ex-info "--file FACT.edn is required" {})))
+  (let [file (io/file path)]
+    (when-not (.isFile file)
+      (throw (ex-info "EDN fact file not found" {:path path})))
+    (edn/read-string (slurp file))))
+
+(defn result-status []
+  (let [result-events
+        (filter #(contains? #{:result/evaluated
+                             :result/tournament-recorded
+                             :result/validated
+                             :result/regressed}
+                           (:tamaki.event/kind %))
+                (events))]
+    {:result/evaluations
+     (->> result-events
+          (filter #(= :result/evaluated (:tamaki.event/kind %)))
+          (mapv :tamaki.event/data))
+     :result/tournaments
+     (->> result-events
+          (filter #(= :result/tournament-recorded
+                      (:tamaki.event/kind %)))
+          (mapv :tamaki.event/data))
+     :result/validations
+     (->> result-events
+          (filter #(contains? #{:result/validated :result/regressed}
+                              (:tamaki.event/kind %)))
+          (mapv :tamaki.event/data))}))
+
+(defn result!
+  [{:keys [positional options]}]
+  (let [[action] positional]
+    (case action
+      "evaluate"
+      (let [evaluation
+            (result-evaluation/evaluate
+             (read-edn-fact (:file options)) (now))]
+        (append-result-event! :result/evaluated evaluation)
+        (print-edn evaluation)
+        0)
+
+      "tournament"
+      (let [tournament
+            (result-evaluation/tournament
+             (read-edn-fact (:file options)))]
+        (append-result-event! :result/tournament-recorded tournament)
+        (print-edn tournament)
+        0)
+
+      "validate"
+      (let [validation
+            (result-evaluation/validation
+             (read-edn-fact (:file options)) (now))
+            kind (if (:validation/regression? validation)
+                   :result/regressed :result/validated)]
+        (append-result-event! kind validation)
+        (print-edn validation)
+        0)
+
+      "status"
+      (do (print-edn (result-status)) 0)
+
+      (throw
+       (ex-info
+        "Usage: tamaki result evaluate|tournament|validate --file FACT.edn; tamaki result status"
+        {})))))
+
 (defn append-loop-event! [campaign kind data]
   (store/append-event! (store/default-root)
                        (agent-loop/loop-event campaign kind (now) data)))
@@ -1646,6 +1756,20 @@
         reason (agent-loop/stop-reason campaign (now))]
     (when reason
       (throw (ex-info "Loop cannot tick" {:loop-id id :reason reason})))
+    (let [all-runs (remove nil? (vals (runs)))
+          evaluation (kaizen/evaluate (events) all-runs (now))
+          admission
+          (kaizen/spawn-admission
+           evaluation all-runs
+           {:actor/capabilities #{:implementation :review}})]
+      (when-not (:admitted? admission)
+        (append-loop-event!
+         campaign :loop/cycle-deferred
+         {:reason (:reason admission)
+          :admission admission
+          :kaizen/decision (:kaizen/decision evaluation)})
+        (throw (ex-info "Loop cycle deferred by global admission control"
+                        {:loop-id id :admission admission}))))
     (let [cycle (inc (:tamaki.loop/cycles campaign))
           project (:tamaki.loop/project campaign)
           runner-id (agent-loop/runner-for-cycle campaign cycle)
@@ -2018,6 +2142,7 @@
       "deliver" (deliver! parsed)
       "review" (review! parsed)
       "integrate" (integrate! parsed)
+      "result" (result! parsed)
       "loop" (loop! parsed)
       "consult" (consult! parsed)
       "voice" (or (voice! parsed) 0)

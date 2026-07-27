@@ -1,0 +1,12 @@
+{:tournament/id :tournament/example-issue
+ :tournament/issue :issue/example
+ :tournament/rubric-version 1
+ :tournament/candidates ["result/candidate-a" "result/candidate-b"]
+ :tournament/matches
+ [{:match/left "result/candidate-a"
+   :match/right "result/candidate-b"
+   :match/winner "result/candidate-b"
+   :match/evidence
+   [{:evidence/type :test
+     :evidence/ref "artifacts/pairwise-test.edn"}]}]}
+
