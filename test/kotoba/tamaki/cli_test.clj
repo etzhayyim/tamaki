@@ -38,6 +38,19 @@
                   (call ["consult" "CI confirmation" "--silent"]))))
       (is (false? (:voice? (second @requests)))))))
 
+(deftest business-feedback-enters-the-actor-decision-context
+  (let [spec {:actor/objective "Grow verified value"}
+        feedback #:business{:status :observed
+                            :kpis {:traffic 1000 :revenue-jpy 0}
+                            :progress {:conversion 0.0}
+                            :control-score 0.1}
+        objective (:actor/objective
+                   (cli/attach-business-feedback spec feedback))]
+    (is (.contains objective "Latest durable business control evidence"))
+    (is (.contains objective ":traffic 1000"))
+    (is (.contains objective ":revenue-jpy 0"))
+    (is (.contains objective "do not interpret traffic as revenue"))))
+
 (deftest business-kpi-observation-is-durable-and-queryable
   (let [root (temp-root)
         observation (java.io.File/createTempFile "tamaki-kpi-" ".edn")

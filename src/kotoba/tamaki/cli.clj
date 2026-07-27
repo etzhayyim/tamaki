@@ -418,10 +418,34 @@
                             0.0))]
     (actor/reconcile-plan controlled (remove nil? (vals (runs))) (now))))
 
+(defn attach-business-feedback [spec feedback]
+  (if feedback
+    (update spec :actor/objective
+            str
+            "\nLatest durable business control evidence: "
+            (pr-str
+             (select-keys feedback
+                          [:business/status :business/kpis
+                           :business/progress :business/control-score]))
+            "\nControl signals: "
+            (pr-str (business/control-signals feedback))
+            ". Select work from measured gaps; do not interpret traffic as "
+            "revenue or invent missing conversions.")
+    spec))
+
 (defn reconcile-actor!
   [spec execute?]
   (let [content-id (:actor/content-id spec)
         feedback (when content-id (content/status (events) content-id))
+        business-feedback
+        (when (or (:actor/business-domain spec)
+                  (= :tamaki/business-portfolio (:actor/type spec))
+                  (= :business-domain (:actor/type spec)))
+          (business-summary
+           (cond-> {:domain (:actor/business-domain spec)}
+             (:actor/business-targets spec)
+             (assoc :targets (:actor/business-targets spec)))))
+        spec (attach-business-feedback spec business-feedback)
         maintenance-feedback
         (when (contains? (set (:actor/capabilities spec)) :loop-evaluation)
           (some->> (events)
