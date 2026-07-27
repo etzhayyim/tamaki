@@ -12,10 +12,60 @@
        clojure.lang.ExceptionInfo #"does not balance"
        (finance/event {:org :example :period "2026-07"
                        :bs {:assets 100 :liabilities 40 :equity 50}}
-                      1))))
+                      1)))
   (is (= :finance/observed
          (:tamaki.event/kind
           (finance/event {:owner {:kind :personal :ref :owner/self}
                           :period "2026-07"
                           :bs {:assets 10 :liabilities 0 :equity 10}}
-                         1))))
+                         1)))))
+
+(deftest missing-period-is-rejected
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires :period"
+       (finance/event {:org :example} 1))))
+
+(deftest missing-identity-is-rejected
+  ;; Neither :org nor :owner/:ref is present — the combined identity check
+  ;; fires before the type guards.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires :period and :org"
+       (finance/event {:period "2026-07"} 1))))
+
+(deftest non-nameable-org-is-rejected-with-a-clear-message
+  ;; A numeric :org passes the truthy identity check but would crash inside
+  ;; `event` when `clojure.core/name` is called on it. The type guard turns
+  ;; that opaque ClassCastException into an actionable validation error.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #":org must be a keyword"
+       (finance/event {:org 123 :period "2026-07"} 1))))
+
+(deftest non-nameable-owner-ref-is-rejected-with-a-clear-message
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #":owner/:ref must be a keyword"
+       (finance/event {:owner {:ref 123} :period "2026-07"} 1))))
+
+(deftest event-run-encodes-the-reporting-entity
+  ;; The durable :tamaki.event/run field namespaces the observation under
+  ;; "finance::<entity>" so multiple orgs / owners coexist in one event store.
+  (let [org-event (finance/event {:org :example :period "2026-07"} 1)
+        owner-event (finance/event {:owner {:ref :owner/self} :period "2026-07"} 1)]
+    (is (= "finance::example" (:tamaki.event/run org-event)))
+    (is (= "finance::self" (:tamaki.event/run owner-event)))))
+
+(deftest partial-balance-sheet-totals-are-accepted
+  ;; When fewer than all three BS totals are supplied, the balance equation
+  ;; is not enforced — matching the documented contract that the check fires
+  ;; only "when all balance-sheet totals are supplied".
+  (is (= :finance/observed
+         (:tamaki.event/kind
+          (finance/event {:org :example :period "2026-07"
+                          :bs {:assets 100 :liabilities 40}} 1))))
+  (is (= :finance/observed
+         (:tamaki.event/kind
+          (finance/event {:org :example :period "2026-07"
+                          :bs {:assets 100}} 1)))))
