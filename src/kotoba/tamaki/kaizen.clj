@@ -118,6 +118,8 @@
                                runs))
          recommendations (set (:kaizen/recommendations evaluation))
          observer? (contains? capabilities :loop-evaluation)
+         essential-operations?
+         (boolean (some capabilities #{:support-routing :incident-response}))
          review-capable? (or (contains? capabilities :result-evaluation)
                              (contains? capabilities :review)
                              (contains? capabilities :review-observation))
@@ -133,11 +135,13 @@
          wip-full? (>= active wip-limit)
          admitted? (and (not wip-full?)
                         (or observer?
+                            essential-operations?
                             (and (not failure-throttle?)
                                  (or (not drain-review?) review-capable?))))
          reason (cond
                   wip-full? :global-wip-limit
                   observer? :control-observer
+                  essential-operations? :essential-operations
                   failure-throttle? :failure-pressure
                   (and drain-review? (not review-capable?))
                   :review-integration-drain
@@ -149,7 +153,13 @@
       :global-active active
       :global-wip-limit wip-limit
       :objective-prefix
-      (when (and admitted? drain-review? review-capable?)
+      (cond
+        (and admitted? essential-operations?)
+        "Essential operations mode: work only on a runnable incident or support node from the declared private topology. Preserve evidence, draft safely, and stop at every human or external-effect gate. Do not start acquisition work while failure pressure is elevated.\n"
+
+        (and admitted? drain-review? review-capable?)
         (if evaluation-drain?
           "Priority control mode: do not start a new issue. Evaluate an existing integrated result from source, tests, independent review, authority, safety, and measured observations. Persist only evidence-backed EDN with `tamaki result evaluate`; unknown production impact stays low-confidence and awaits 7/30-day validation.\n"
-          "Priority control mode: do not start a new issue. Review the existing integration frontier, verify source and tests, and integrate one compatible result through the declared authority before selecting more work.\n"))})))
+          "Priority control mode: do not start a new issue. Review the existing integration frontier, verify source and tests, and integrate one compatible result through the declared authority before selecting more work.\n")
+
+        :else nil)})))

@@ -72,6 +72,23 @@
     (is (= :throttle-spawn (:kaizen/decision result)))
     (is (= 0.5 (get-in result [:kaizen/evidence :failure-pressure])))))
 
+(deftest failure-pressure-keeps-essential-support-and-incident-work-alive
+  (let [evaluation {:kaizen/recommendations
+                    [:evaluate-integrated-results :throttle-spawn]}
+        support (kaizen/spawn-admission
+                 evaluation []
+                 {:actor/capabilities
+                  #{:implementation :support-routing}})
+        ordinary (kaizen/spawn-admission
+                  evaluation []
+                  {:actor/capabilities #{:implementation :review}})]
+    (is (:admitted? support))
+    (is (= :essential-operations (:reason support)))
+    (is (re-find #"Essential operations mode"
+                 (:objective-prefix support)))
+    (is (false? (:admitted? ordinary)))
+    (is (= :failure-pressure (:reason ordinary)))))
+
 (deftest low-throughput-after-several-starts-redirects-issue-selection
   (let [result (kaizen/evaluate
                 [(event :run/started 900)
