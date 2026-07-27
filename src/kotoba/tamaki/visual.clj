@@ -246,6 +246,9 @@
             ocr (execute-with-timeout
                  ["swift" "-e" ocr-script (:visual/path capture)]
                  project 20)
+            _ (when-not (zero? (:exit ocr))
+                (throw (ex-info "Vision OCR analysis failed"
+                                {:exit (:exit ocr) :error (:err ocr)})))
             text (str/lower-case (:out ocr))]
         ;; Store the OCR text alongside the verdict so a :degraded finding
         ;; (e.g. "provider usage cards not visible") carries the evidence

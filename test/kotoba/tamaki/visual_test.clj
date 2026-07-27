@@ -210,7 +210,21 @@
       (is (some #(= "One or more provider usage cards are not visible" %)
                 (:visual/findings result))))))
 
+(deftest analyze-reports-ocr-process-failure
+  ;; A failed or timed-out OCR subprocess must not masquerade as a successful
+  ;; degraded verdict claiming that every text-dependent panel is absent.
+  (with-redefs [visual/execute-with-timeout
+                (fn [argv _cwd _timeout-seconds]
+                  (if (= (nth argv 2) visual/metrics-script)
+                    {:exit 0 :out "1280 800 100.0 20.0 0.5" :err ""}
+                    {:exit 124 :out "" :err "visual analysis timed out"}))]
+    (let [result (visual/analyze! "." {:visual/status :captured
+                                         :visual/path "observatory.png"})]
+      (is (= :analysis-failed (:visual/status result)))
+      (is (= "Vision OCR analysis failed" (:visual/error result)))
+      (is (nil? (:visual/findings result))))))
+
 (deftest analyze-leaves-uncaptured-status-untouched
   (is (= {:visual/status :unavailable :visual/error "no window"}
          (visual/analyze! "." {:visual/status :unavailable
-                                :visual/error "no window"}))))
+                                 :visual/error "no window"}))))
