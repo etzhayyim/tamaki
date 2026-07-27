@@ -2,20 +2,24 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is]]
             [kotoba.tamaki.delivery]
-            [kotoba.tamaki.visual :as visual])
-  (:import [java.awt.image BufferedImage]
-           [javax.imageio ImageIO]))
+            [kotoba.tamaki.visual :as visual]))
 
 (defn- write-solid-png!
-  "Write a deterministic solid-color PNG at the given pixel size for capture tests."
+  "Write the PNG signature and IHDR used by dimension-gate tests.
+  Avoid AWT/ImageIO so the documented Babashka gate stays portable."
   [file width height]
-  (let [img (BufferedImage. (int width) (int height) BufferedImage/TYPE_INT_RGB)]
-    (doto (.getGraphics img)
-      (.setColor java.awt.Color/DARK_GRAY)
-      (.fillRect 0 0 width height)
-      (.dispose))
-    (ImageIO/write img "png" (io/file file))
-    file))
+  (with-open [out (java.io.DataOutputStream.
+                   (io/output-stream (io/file file)))]
+    (doseq [value [0x89 0x50 0x4e 0x47 0x0d 0x0a 0x1a 0x0a]]
+      (.write out value))
+    (.writeInt out 13)
+    (.writeBytes out "IHDR")
+    (.writeInt out (int width))
+    (.writeInt out (int height))
+    ;; bit depth, colour type, compression, filter, interlace + placeholder CRC
+    (doseq [value [8 2 0 0 0]] (.write out value))
+    (.writeInt out 0))
+  file)
 
 (deftest missing-window-is-an-observable-nonfatal-state
   (with-redefs [kotoba.tamaki.delivery/execute!

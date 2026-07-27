@@ -21,6 +21,10 @@
     <string>900000</string>
     <key>TAMAKI_SELF_EVOLUTION_MODE</key>
     <string>radicle</string>
+    <key>TAMAKI_STATE_DIR</key>
+    <string>/ABSOLUTE/PATH/TO/tamaki/.tamaki</string>
+    <key>TAMAKI_WORKSPACE_ROOT</key>
+    <string>/ABSOLUTE/PATH/TO/workspace</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

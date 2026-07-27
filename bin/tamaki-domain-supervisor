@@ -11,6 +11,7 @@ reaction_collector_dir="${TAMAKI_REACTION_COLLECTOR_SPEC_DIR:-$collector_dir/con
 concurrency="${TAMAKI_DOMAIN_CONCURRENCY:-3}"
 cd "$tamaki_root"
 export TAMAKI_WORKSPACE="$workspace_root"
+export TAMAKI_WORKSPACE_ROOT="$workspace_root"
 export TAMAKI_STATE_DIR="${TAMAKI_STATE_DIR:-$workspace_root/projects/.tamaki/tamaki-state}"
 
 if [[ ! -d "$actor_dir" ]]; then

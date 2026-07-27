@@ -21,7 +21,9 @@ extra_loop_spec="${TAMAKI_EXTRA_LOOP_SPEC:-}"
 cd "$tamaki_root"
 export COM_JUNKAWASAKI_ROOT="${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/../../.." && pwd)}"
 export TAMAKI_WORKSPACE="${TAMAKI_WORKSPACE:-$COM_JUNKAWASAKI_ROOT}"
+export TAMAKI_WORKSPACE_ROOT="${TAMAKI_WORKSPACE_ROOT:-$COM_JUNKAWASAKI_ROOT}"
 export FLEET_ROOT="${FLEET_ROOT:-$COM_JUNKAWASAKI_ROOT}"
+export TAMAKI_STATE_DIR="${TAMAKI_STATE_DIR:-$tamaki_root/.tamaki}"
 
 loop_id=""
 if [[ "$self_evolution_mode" == "github" ]]; then
@@ -97,6 +99,11 @@ trap cleanup EXIT INT TERM
     for reconcile_pid in "${actor_reconcile_pids[@]}"; do
       wait "$reconcile_pid" || true
     done
+    # Deterministic lifecycle collection. Only clean terminal worktrees whose
+    # HEAD is already reachable from the canonical checkout are removed.
+    # Dirty, conflicted, and unique-commit trees remain preserved and become
+    # evidence for the loop-gardener on its next reconciliation.
+    bin/tamaki maintenance cleanup --execute || true
     sleep "$actor_interval_seconds"
   done
 ) &

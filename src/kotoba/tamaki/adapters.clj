@@ -6,6 +6,8 @@
 
 (defn workspace-root []
   (or (System/getenv "TAMAKI_WORKSPACE_ROOT")
+      (System/getenv "TAMAKI_WORKSPACE")
+      (System/getenv "COM_JUNKAWASAKI_ROOT")
       (-> (io/file (System/getProperty "user.dir"))
           .getAbsoluteFile
           .getParentFile

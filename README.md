@@ -454,3 +454,19 @@ reconciles title, description, state, and Tamaki-managed labels. Human labels
 are preserved. Every executed import/project writes a receipt to Tamaki's
 private event store. Actors with `:topology-sync` run the projector at their
 reconciliation boundary.
+
+### Lifecycle maintenance
+
+Generated actor/swarm worktrees are leases, not permanent checkouts:
+
+```sh
+tamaki maintenance status
+tamaki maintenance cleanup          # dry-run summary
+tamaki maintenance cleanup --execute
+```
+
+Cleanup removes only terminal, clean, conflict-free worktrees whose HEAD is
+already reachable from the canonical repository. Dirty changes, unique commits,
+merge conflicts, and index locks are preserved and reported to the
+loop-gardener. The resident supervisor executes this deterministic collector
+after every actor reconciliation round; it never uses force removal.

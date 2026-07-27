@@ -16,6 +16,7 @@
             [kotoba.tamaki.loop-registry :as loop-registry]
             [kotoba.tamaki.lineage :as lineage]
             [kotoba.tamaki.intelligence :as intelligence]
+            [kotoba.tamaki.maintenance :as maintenance]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.store :as store]
@@ -56,6 +57,7 @@
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
        "  tamaki content status --id CONTENT-ID\n"
        "  tamaki finance observe --file ACCOUNTING.edn\n"
+       "  tamaki maintenance status|cleanup [--execute]\n"
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
@@ -219,6 +221,45 @@
         0))
     (throw (ex-info "Usage: tamaki finance observe --file ACCOUNTING.edn" {}))))
 
+(defn maintenance!
+  [{:keys [positional options]}]
+  (let [action (first positional)
+        plan (maintenance/plan (remove nil? (vals (runs))) (now))
+        summary (maintenance/summary plan)]
+    (case action
+      "status"
+      (do (print-edn (assoc summary :maintenance/plan plan)) 0)
+
+      "cleanup"
+      (let [results (when (:execute options)
+                      (maintenance/apply-plan! plan))
+            failed (filter #(and (= :remove (:maintenance/disposition %))
+                                 (not (:maintenance/applied? %)))
+                           results)
+            receipt (cond-> (assoc summary
+                                   :maintenance/dry-run
+                                   (not (:execute options)))
+                      results (assoc :maintenance/results results))]
+        (when (:execute options)
+          (store/append-event!
+           (store/default-root)
+           {:tamaki.event/version 1
+            :tamaki.event/id (str (random-uuid))
+            :tamaki.event/run "maintenance::git-lifecycle"
+            :tamaki.event/parent nil
+            :tamaki.event/kind :maintenance/completed
+            :tamaki.event/at (now)
+            :tamaki.event/data
+            (update receipt :maintenance/results
+                    #(mapv (fn [result]
+                             (dissoc result :maintenance/result))
+                           %))}))
+        (print-edn receipt)
+        (if (seq failed) 1 0))
+
+      (throw
+       (ex-info "Usage: tamaki maintenance status|cleanup [--execute]" {})))))
+
 (defn- topology-receipt! [kind data]
   (store/append-event!
    (store/default-root)
@@ -366,6 +407,13 @@
   [spec execute?]
   (let [content-id (:actor/content-id spec)
         feedback (when content-id (content/status (events) content-id))
+        maintenance-feedback
+        (when (contains? (set (:actor/capabilities spec)) :loop-evaluation)
+          (some->> (events)
+                   (filter #(= :maintenance/completed
+                               (:tamaki.event/kind %)))
+                   last
+                   :tamaki.event/data))
         spec (if-let [latest (:latest feedback)]
                (update spec :actor/objective
                        str
@@ -374,6 +422,19 @@
                                             [:channel :artifact/id :signals
                                              :next-action]))
                        ". Use this evidence when selecting the next issue.")
+               spec)
+        spec (if maintenance-feedback
+               (update spec :actor/objective
+                       str
+                       "\nLatest deterministic lifecycle maintenance output: "
+                       (pr-str
+                        (select-keys
+                         maintenance-feedback
+                         [:maintenance/dispositions
+                          :maintenance/conflicts
+                          :maintenance/preserved]))
+                       ". Judge cleanup and conflict work from this output; "
+                       "never delete preserved evidence.")
                spec)
         topology-sync (reconcile-actor-topology! spec execute?)
         before (actor-status spec)
@@ -1920,6 +1981,7 @@
       "kpi" (kpi! parsed)
       "content" (content! parsed)
       "finance" (finance! parsed)
+      "maintenance" (maintenance! parsed)
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
