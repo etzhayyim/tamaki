@@ -83,7 +83,9 @@
                    (actor/runnable-issues
                     (actor/read-issue-topology loaded)))))
       (is (str/includes? goal "Topology authority: EDN"))
-      (is (str/includes? goal "ready — Ready work"))
+      (is (str/includes? goal "\"ready\""))
+      (is (str/includes? goal "\"Ready work\""))
+      (is (str/includes? goal ":issue/criteria"))
       (is (not (str/includes? goal "blocked — Blocked work"))))))
 
 (deftest reconcile-plan-scales-to-desired-state

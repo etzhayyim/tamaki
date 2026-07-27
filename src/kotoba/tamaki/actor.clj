@@ -103,11 +103,12 @@
            ". Topology authority: EDN; forge issues are projections."
            "\nRunnable issues: "
            (if (seq runnable)
-             (str/join ", "
-                       (map (fn [issue]
-                              (str (:issue/id issue) " — "
-                                   (:issue/title issue)))
-                            runnable))
+             (pr-str
+              (mapv #(select-keys
+                      % [:issue/id :issue/title :issue/type :issue/lane
+                         :issue/priority :issue/blocked-by :issue/evidence
+                         :issue/criteria])
+                    runnable))
              "none")
            ". Work only on a listed runnable issue. Update its EDN state "
            "only when source, tests, review, or integration evidence exists; "
