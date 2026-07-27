@@ -91,3 +91,22 @@
       (is (< (business/risk-adjusted-delta-mrr
               (business/normalize-observation observation))
              150000)))))
+
+(deftest read-targets-loads-a-valid-edn-map
+  ;; `read-targets` backs `tamaki kpi status|observe|collect` and actor
+  ;; reconciliation (`cli.clj` `business-targets`); it had no direct test
+  ;; coverage even though it enforces a real shape guard below.
+  (let [file (java.io.File/createTempFile "tamaki-business-targets" ".edn")]
+    (try
+      (spit file (pr-str targets))
+      (is (= targets (business/read-targets (.getAbsolutePath file))))
+      (finally (.delete file)))))
+
+(deftest read-targets-rejects-a-non-map-edn-document
+  (let [file (java.io.File/createTempFile "tamaki-business-targets" ".edn")]
+    (try
+      (spit file (pr-str [:target/mrr-jpy 1000000]))
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo #"must be an EDN map"
+           (business/read-targets (.getAbsolutePath file))))
+      (finally (.delete file)))))
