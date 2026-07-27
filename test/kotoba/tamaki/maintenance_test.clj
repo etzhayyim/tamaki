@@ -80,6 +80,22 @@
     (is (= :preserve (:maintenance/disposition result)))
     (is (= :independent-repository (:maintenance/reason result)))))
 
+(deftest generated-output-with-missing-source-is-preserved
+  (let [parent (.toFile
+                (java.nio.file.Files/createTempDirectory
+                 "tamaki-maint-missing-parent"
+                 (make-array java.nio.file.attribute.FileAttribute 0)))
+        source (io/file parent "gone")
+        project (io/file parent ".gone-tamaki-actor-codex-1")]
+    (.mkdirs project)
+    (let [result (maintenance/inspect-run
+                  (assoc terminal-run
+                         :agent.run/source-project (.getPath source)
+                         :agent.run/project (.getPath project))
+                  600002)]
+      (is (= :preserve (:maintenance/disposition result)))
+      (is (= :source-missing (:maintenance/reason result))))))
+
 (deftest plan-deduplicates-a-worktree-and-keeps-the-safer-disposition
   (with-redefs [maintenance/inspect-run
                 (fn [run _]
