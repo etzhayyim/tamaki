@@ -85,6 +85,9 @@
                    (actor/runnable-issues
                     (actor/read-issue-topology loaded)))))
       (is (str/includes? goal "Topology authority: EDN"))
+      (is (str/includes? goal "do not read, write, or otherwise access it"))
+      (is (str/includes? goal "complete topology input authorized for this run"))
+      (is (str/includes? goal "The supervisor alone updates canonical EDN"))
       (is (str/includes? goal "\"ready\""))
       (is (str/includes? goal "\"Ready work\""))
       (is (str/includes? goal "Measured backlog is reduced"))

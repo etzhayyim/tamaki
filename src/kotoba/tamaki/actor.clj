@@ -101,7 +101,11 @@
       (str "\nCanonical issue topology (EDN): "
            (:actor/issue-topology-file spec)
            ". Topology authority: EDN; forge issues are projections."
-           "\nRunnable issues: "
+           " The path is supervisor metadata outside the isolated worktree: "
+           "do not read, write, or otherwise access it during this run. "
+           "The embedded runnable snapshot below is the complete topology "
+           "input authorized for this run."
+           "\nRunnable issue snapshot: "
            (if (seq runnable)
              (pr-str
               (mapv #(select-keys
@@ -110,9 +114,10 @@
                          :issue/criteria])
                     runnable))
              "none")
-           ". Work only on a listed runnable issue. Update its EDN state "
-           "only when source, tests, review, or integration evidence exists; "
-           "then reconcile the projection to the declared issue authority."))))
+           ". Work only on a listed runnable issue. Produce source, tests, "
+           "review evidence, a redacted receipt, or an explicit blocked "
+           "result. The supervisor alone updates canonical EDN and reconciles "
+           "its forge projection after validating that evidence."))))
 
 (defn runner-pool [spec]
   (let [runners (:actor/runners spec)
