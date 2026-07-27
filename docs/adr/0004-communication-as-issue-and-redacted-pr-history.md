@@ -30,6 +30,14 @@ the actor's HIL policy. Ingestion and redacted projection may run
 autonomously. Recording a call requires the participants' applicable consent;
 Tamaki records only consent state, never assumes it.
 
+For email send/reply, approval is content-bound rather than a general
+permission. The local review surface displays the sending account, recipients,
+subject, complete body, attachment manifest, related issue, and reply context.
+The approval receipt contains the SHA-256 digest of that exact draft. A change
+to any reviewed field makes the receipt unusable, returning the effect to
+review. Only the redacted digest receipt enters Tamaki's event history; the
+preview remains in the local-private mail store.
+
 ## Consequences
 
 - A reply, approval, unanswered call, or requested decision can block another

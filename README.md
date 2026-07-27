@@ -149,6 +149,13 @@ conversion, retention, and 7/30-day outcome validation. Generated nodes are
 addresses, credentials, and bodies remain in the injected mail/data adapter;
 only aggregate stocks and redacted result receipts enter Tamaki.
 
+Mail delivery is fail-closed. Before every send or reply, the local review
+surface shows the account, recipients, subject, complete body, attachments,
+related issue, and reply context. Approval is bound to a SHA-256 digest of
+that exact draft. Editing any reviewed field invalidates the receipt and
+requires another human review. Tamaki persists only the digest and decision;
+the preview content stays in the local-private transport.
+
 The feedback decision prioritizes discovery, completion/retention, engagement,
 conversion, then a follow-up. Missing observations remain
 `:await-observation`; Tamaki never fabricates audience response. Drafting,

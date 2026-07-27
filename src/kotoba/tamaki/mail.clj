@@ -10,6 +10,60 @@
 (def send-actions #{:mail/send :mail/reply})
 (def actions (into #{} (concat read-actions compose-actions send-actions)))
 
+(defn- sha256 [value]
+  (let [digest (.digest (java.security.MessageDigest/getInstance "SHA-256")
+                        (.getBytes (str value) "UTF-8"))]
+    (apply str (map #(format "%02x" (bit-and % 0xff)) digest))))
+
+(defn draft-digest
+  "Bind a human decision to exactly the content that was previewed.
+  Any recipient, subject, body, attachment, account, or action edit changes
+  the digest and invalidates the previous approval."
+  [{:keys [org account action recipients subject body attachments]}]
+  (sha256
+   (pr-str
+    (sorted-map
+     :account (str account)
+     :action (str action)
+     :attachments (mapv #(select-keys % [:name :digest :size :content-type])
+                        attachments)
+     :body (or body "")
+     :org (str org)
+     :recipients (vec recipients)
+     :subject (or subject "")))))
+
+(defn review
+  "Build an ephemeral local preview plus the redacted record that may enter
+  Tamaki's event stream. Callers must display :mail.review/preview locally
+  but persist only :mail.review/record."
+  [request]
+  (let [digest (draft-digest request)]
+    {:mail.review/preview
+     (select-keys request [:org :account :action :recipients :subject
+                           :body :attachments])
+     :mail.review/record
+     {:mail/draft-digest digest
+      :mail/account-ref (:account request)
+      :mail/action (:action request)
+      :mail/recipient-count (count (:recipients request))
+      :mail/attachment-count (count (:attachments request))
+      :mail/private-content? true}}))
+
+(defn approval-receipt
+  "Create a redacted receipt for the draft that the human actually reviewed."
+  [request decision reviewer]
+  {:mail.approval/status decision
+   :mail.approval/draft-digest (draft-digest request)
+   :mail.approval/reviewer reviewer
+   :mail.approval/private-content? true})
+
+(defn approved?
+  "True only when an explicit approval is bound to the unchanged draft."
+  [request receipt]
+  (and (= :approved (:mail.approval/status receipt))
+       (= (draft-digest request)
+          (:mail.approval/draft-digest receipt))))
+
 (defn decision
   "Return the default HIL decision for a mail action.
   Bulk or unspecified-recipient delivery is blocked."
@@ -21,9 +75,14 @@
     :else :autonomous))
 
 (defn command
-  "Build a secret-free command for an injected mail transport."
-  [{:keys [org account action recipients subject body query] :as request}]
-  (let [verdict (decision request)]
+  "Build a governed command for an injected mail transport.
+  A send/reply command is executable only when its approval receipt matches
+  the exact draft digest. Approval-required does not mean executable."
+  [{:keys [org account action recipients subject body query attachments
+           approval] :as request}]
+  (let [verdict (decision request)
+        delivery? (contains? send-actions action)
+        approved-delivery? (and delivery? (approved? request approval))]
     (when (or (str/blank? (name (or org "")))
               (str/blank? (str account)))
       (throw (ex-info "Mail command requires org and account reference"
@@ -34,8 +93,11 @@
      :mail/recipients (vec recipients)
      :mail/subject subject
      :mail/body body
+     :mail/attachments (vec attachments)
      :mail/query query
      :mail/decision verdict
-     :mail/executable? (contains? #{:autonomous :approval-required} verdict)
+     :mail/draft-digest (when delivery? (draft-digest request))
+     :mail/approval-bound? approved-delivery?
+     :mail/review-required? (and delivery? (not approved-delivery?))
+     :mail/executable? (or (= :autonomous verdict) approved-delivery?)
      :mail/credential-material? false}))
-
