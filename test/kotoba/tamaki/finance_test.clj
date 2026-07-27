@@ -20,6 +20,25 @@
                           :bs {:assets 10 :liabilities 0 :equity 10}}
                          1)))))
 
+(deftest blank-period-is-rejected
+  ;; An empty string is truthy in Clojure, so a bare `(:period observation)`
+  ;; check alone would silently accept it as a valid reporting period.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires :period"
+       (finance/event {:org :example :period ""
+                       :bs {:assets 10 :liabilities 0 :equity 10}}
+                      1))))
+
+(deftest whitespace-only-period-is-rejected
+  ;; Same hazard as an empty string: whitespace alone is not a real period.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires :period"
+       (finance/event {:org :example :period "   "
+                       :bs {:assets 10 :liabilities 0 :equity 10}}
+                      1))))
+
 (deftest missing-period-is-rejected
   (is (thrown-with-msg?
        clojure.lang.ExceptionInfo

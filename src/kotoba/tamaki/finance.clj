@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.finance
-  "Validated accounting observations for local dashboards.")
+  "Validated accounting observations for local dashboards."
+  (:require [clojure.string :as str]))
 
 (defn- nameable?
   "True for values safe to pass to `clojure.core/name`. Keywords, strings,
@@ -8,8 +9,16 @@
   [value]
   (or (keyword? value) (string? value) (symbol? value)))
 
+(defn- present?
+  "True for a non-nil value that, if a string, is also non-blank. Guards
+  against a blank or whitespace-only :period silently passing validation --
+  Clojure's truthiness treats \"\" as truthy, so a bare `(:period ...)`
+  check alone would let an empty reporting period through."
+  [value]
+  (if (string? value) (not (str/blank? value)) (some? value)))
+
 (defn validate-observation [observation]
-  (when-not (and (:period observation)
+  (when-not (and (present? (:period observation))
                  (or (:org observation)
                      (get-in observation [:owner :ref])))
     (throw (ex-info
