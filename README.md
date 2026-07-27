@@ -156,6 +156,13 @@ that exact draft. Editing any reviewed field invalidates the receipt and
 requires another human review. Tamaki persists only the digest and decision;
 the preview content stays in the local-private transport.
 
+```sh
+tamaki mail review --file /path/to/private-runtime/draft.edn
+```
+
+This opens the native local review dialog and prints only a redacted approval
+receipt. Passing that receipt with an edited draft still fails closed.
+
 The feedback decision prioritizes discovery, completion/retention, engagement,
 conversion, then a follow-up. Missing observations remain
 `:await-observation`; Tamaki never fabricates audience response. Drafting,

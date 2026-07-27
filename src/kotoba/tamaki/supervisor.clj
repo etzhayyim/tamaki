@@ -75,6 +75,17 @@
         decision (hil/request! (macos-prompt {:voice? voice?}) request)]
     (record-decision! request decision (System/currentTimeMillis))))
 
+(defn consult-private!
+  "Display private content locally while recording only a caller-supplied
+  redacted request. This keeps mail bodies and recipients out of Tamaki's
+  durable event stream."
+  [{:keys [display-request record-request voice?]}]
+  (let [display-request (hil/approval-request display-request)
+        record-request (hil/approval-request record-request)
+        decision (hil/request! (macos-prompt {:voice? voice?})
+                               display-request)]
+    (record-decision! record-request decision (System/currentTimeMillis))))
+
 (defn voice-intent
   "Validate a speech transcript before it becomes an agent goal."
   [transcript]

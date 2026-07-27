@@ -17,6 +17,7 @@
             [kotoba.tamaki.lineage :as lineage]
             [kotoba.tamaki.intelligence :as intelligence]
             [kotoba.tamaki.kaizen :as kaizen]
+            [kotoba.tamaki.mail :as mail]
             [kotoba.tamaki.maintenance :as maintenance]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.runners :as runners]
@@ -52,6 +53,7 @@
        "  tamaki result status\n"
        "  tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ...\n"
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
+       "  tamaki mail review --file PRIVATE-DRAFT.edn\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
        "  tamaki kpi status [--targets FILE]\n"
@@ -77,6 +79,48 @@
        "  --repo OWNER/REPO --pin SHA --node NAME|auto --model MODEL --runner ID\n"
        "  --organism-name NAME [--organism-generation N --organism-parent ID]\n"
        "  --requires git,nbb,clojure --parent RUN-ID --execute\n"))
+
+(defn mail!
+  [{:keys [positional options]}]
+  (let [[subcommand] positional
+        path (:file options)]
+    (when-not (and (= "review" subcommand) path)
+      (throw (ex-info "Usage: tamaki mail review --file PRIVATE-DRAFT.edn" {})))
+    (let [draft (edn/read-string (slurp (io/file path)))
+          _ (when-not (contains? mail/send-actions (:action draft))
+              (throw (ex-info "Mail review accepts only :mail/send or :mail/reply"
+                              {:action (:action draft)})))
+          {:mail.review/keys [preview record]} (mail/review draft)
+          attachments (or (:attachments preview) [])
+          display-summary
+          (str "送信アカウント: " (:account preview)
+               "\n宛先: " (str/join ", " (:recipients preview))
+               "\n件名: " (:subject preview)
+               "\n添付: "
+               (if (seq attachments)
+                 (str/join ", " (map :name attachments))
+                 "なし")
+               "\n関連 issue: " (or (:related-issue draft) "なし")
+               "\n返信 context: " (or (:reply-context draft) "なし")
+               "\n\n本文:\n" (:body preview))
+          decision
+          (:decision
+           (supervisor/consult-private!
+            {:display-request
+             {:id (str "mail-review-" (now))
+              :title "Tamaki: メール送信前の内容確認"
+              :summary display-summary
+              :action "表示された内容をそのまま送信する"
+              :impact "Approve後のみ送信可能です。編集すると再確認になります。"}
+             :record-request
+             {:id (str "mail-review-" (now))
+              :title "Tamaki: redacted mail review"
+              :summary "A local-private mail draft was reviewed."
+              :action "Authorize only the unchanged draft digest."
+              :impact (pr-str record)}
+             :voice? true}))]
+      (prn (mail/approval-receipt draft decision :human/operator))
+      (if (= :approved decision) 0 1))))
 
 (defn parse-args
   "A bare `--` ends option parsing: everything after it is returned verbatim as
@@ -2185,6 +2229,7 @@
       "result" (result! parsed)
       "loop" (loop! parsed)
       "consult" (consult! parsed)
+      "mail" (mail! parsed)
       "voice" (or (voice! parsed) 0)
       "actor" (actor! parsed)
       "kpi" (kpi! parsed)
