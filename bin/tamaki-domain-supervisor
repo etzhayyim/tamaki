@@ -40,25 +40,29 @@ while true; do
     echo "No ActorSpecs found in $actor_dir" >&2
     exit 2
   fi
+
+  # Observation cadence must not be held hostage by long-running agents.
+  # Collect every declared domain first; only actor execution is batched.
+  # This keeps portfolio pressure current even when one implementation run
+  # takes several minutes or waits at a human gate.
+  for current_spec in "${specs[@]}"; do
+    collector="$collector_dir/$(basename "$current_spec")"
+    if [[ -f "$collector" ]]; then
+      bin/tamaki kpi collect --spec "$collector" \
+        --targets "$control_root/business-targets.edn" || true
+    fi
+    reaction_collector="$reaction_collector_dir/$(basename "$current_spec")"
+    if [[ -f "$reaction_collector" ]]; then
+      bin/tamaki content collect --spec "$reaction_collector" || true
+    fi
+  done
+
   pids=()
   count="${#specs[@]}"
   batch="$concurrency"
   (( batch > count )) && batch="$count"
   for ((offset=0; offset<batch; offset++)); do
     spec="${specs[$(((index + offset) % count))]}"
-    collector="$collector_dir/$(basename "$spec")"
-    if [[ -f "$collector" ]]; then
-      # A stale or unavailable provider must not stop code/reliability work.
-      # `kpi collect` records zero confidence and exits non-zero when stale.
-      bin/tamaki kpi collect --spec "$collector" \
-        --targets "$control_root/business-targets.edn" || true
-    fi
-    reaction_collector="$reaction_collector_dir/$(basename "$spec")"
-    if [[ -f "$reaction_collector" ]]; then
-      # Provider export jobs own these local snapshots. Missing data is
-      # explicitly unavailable and must never be replaced by synthetic facts.
-      bin/tamaki content collect --spec "$reaction_collector" || true
-    fi
     bin/tamaki actor reconcile "$spec" --execute &
     pids+=("$!")
   done
