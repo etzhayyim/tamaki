@@ -65,7 +65,9 @@
                     :issue/status :integrated :issue/blocked-by []}
                    {:issue/id "ready" :issue/title "Ready work"
                     :issue/status :open :issue/priority :p0
-                    :issue/blocked-by ["root"]}
+                    :issue/blocked-by ["root"]
+                    :issue/evidence {:backlog 3}
+                    :issue/criteria ["Measured backlog is reduced"]}
                    {:issue/id "blocked" :issue/title "Blocked work"
                     :issue/status :open :issue/priority :p0
                     :issue/blocked-by ["ready"]}]}]
@@ -85,7 +87,7 @@
       (is (str/includes? goal "Topology authority: EDN"))
       (is (str/includes? goal "\"ready\""))
       (is (str/includes? goal "\"Ready work\""))
-      (is (str/includes? goal ":issue/criteria"))
+      (is (str/includes? goal "Measured backlog is reduced"))
       (is (not (str/includes? goal "blocked — Blocked work"))))))
 
 (deftest reconcile-plan-scales-to-desired-state
