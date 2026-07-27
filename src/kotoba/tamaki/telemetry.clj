@@ -5,7 +5,8 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str])
-  (:import [java.time LocalDate ZoneOffset]))
+  (:import [java.time Instant LocalDate ZoneOffset]
+           [java.time.format DateTimeParseException]))
 
 (defn read-edn [path]
   (edn/read-string (slurp (io/file path))))
@@ -36,15 +37,33 @@
         (map (fn [[key selector]] [key (value-at snapshot selector)]))
         mappings))
 
+(defn- parse-timestamp-ms
+  "Normalize a provider timestamp into epoch milliseconds.
+
+  Accepts numbers, digit-only epoch-ms strings, ISO-8601 instants, and
+  calendar dates (UTC start of day). Unparseable values return nil so
+  collectors fail closed to :fresh? false rather than aborting KPI intake."
+  [value]
+  (cond
+    (number? value) (long value)
+    (string? value)
+    (let [trimmed (str/trim value)]
+      (when-not (str/blank? trimmed)
+        (or (when (re-matches #"\d+" trimmed)
+              (try (Long/parseLong trimmed)
+                   (catch NumberFormatException _ nil)))
+            (try (.toEpochMilli (Instant/parse trimmed))
+                 (catch DateTimeParseException _ nil))
+            (try (-> (LocalDate/parse trimmed)
+                     (.atStartOfDay ZoneOffset/UTC)
+                     .toInstant
+                     .toEpochMilli)
+                 (catch DateTimeParseException _ nil)))))
+    :else nil))
+
 (defn observed-at-ms [snapshot]
   (when-let [value (or (:observed-at snapshot) (:as-of snapshot))]
-    (cond
-      (number? value) (long value)
-      (string? value)
-      (-> (LocalDate/parse value)
-          (.atStartOfDay ZoneOffset/UTC)
-          .toInstant
-          .toEpochMilli))))
+    (parse-timestamp-ms value)))
 
 (defn collect
   [spec now-ms]
@@ -52,7 +71,10 @@
         observed-at (observed-at-ms snapshot)
         max-age-ms (long (or (:collector/max-age-ms spec) 172800000))
         age-ms (when observed-at (max 0 (- now-ms observed-at)))
-        fresh? (and observed-at (<= age-ms max-age-ms))
+        ;; Always boolean: business/summary treats only explicit false as
+        ;; :stale. A missing or unparseable provider timestamp must not look
+        ;; "observed" with fabricated KPIs — fail closed to not-fresh.
+        fresh? (boolean (and observed-at (<= age-ms max-age-ms)))
         mappings (:collector/mappings spec)
         observation
         {:domain (:collector/domain spec)
