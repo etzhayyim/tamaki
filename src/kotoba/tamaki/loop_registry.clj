@@ -86,7 +86,8 @@
 
 (defn validate-spec
   [spec]
-  (let [id (loop-id (:loop/id spec))
+  (let [unknown-keys (seq (remove loop-spec-keys (keys spec)))
+        id (loop-id (:loop/id spec))
         objective (:loop/objective spec)
         project (:loop/project spec)
         runners (normalize-runners (:loop/runners spec) (:loop/runner spec))
@@ -97,6 +98,9 @@
         enabled (if (contains? spec :loop/enabled)
                   (boolean (:loop/enabled spec))
                   true)]
+    (when unknown-keys
+      (throw (ex-info "LoopSpec contains unknown keys"
+                      {:loop/id id :unknown-keys (vec (sort unknown-keys))})))
     (when (str/blank? (str objective))
       (throw (ex-info "LoopSpec requires :loop/objective" {:loop/id id})))
     (when (str/blank? (str project))

@@ -33,6 +33,18 @@
       (is (true? (:continuous opts)))
       (is (true? (:auto-approve opts))))))
 
+(deftest validate-rejects-unknown-keys
+  (let [error (try
+                (reg/validate-spec
+                 {:loop/id :demo/typo
+                  :loop/objective "x"
+                  :loop/project "/tmp"
+                  :loop/intervl-ms 1000})
+                nil
+                (catch clojure.lang.ExceptionInfo e e))]
+    (is (= "LoopSpec contains unknown keys" (ex-message error)))
+    (is (= [:loop/intervl-ms] (:unknown-keys (ex-data error))))))
+
 (deftest weighted-runners-normalize-like-actor-spec
   (let [spec (reg/validate-spec
               {:loop/id :demo/weighted
