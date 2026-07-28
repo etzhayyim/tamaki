@@ -4,7 +4,8 @@
   Vocabulary, ABI, effect classes, validation, and envelope shape are owned
   by kotoba-lang/kotoba-core-contracts. Tamaki only supplies actor ownership
   and emits the minimal execution envelope."
-  (:require [kotoba.core.actor-capability :as shared]))
+  (:require [kotoba.core.actor-capability :as shared]
+            [kotoba.core.capability-repository :as repository]))
 
 ;; Compatibility aliases keep Tamaki callers source-compatible while making
 ;; the shared library the single definition site.
@@ -33,4 +34,9 @@
   ;; Validate through the Tamaki compatibility entry point first so existing
   ;; error semantics remain stable, then let the shared library emit.
   (validate! actor-capabilities execution)
-  (shared/execution-envelope actor-id actor-capabilities execution))
+  (let [envelope (shared/execution-envelope
+                  actor-id actor-capabilities execution)]
+    (assoc envelope
+           :tamaki.capability/repositories
+           (repository/repository-refs-for-imports
+            (:tamaki.capability/imports envelope)))))

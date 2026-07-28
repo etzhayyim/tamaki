@@ -41,6 +41,11 @@
            (get-in envelope [:tamaki.capability/abi :namespace])))
     (is (= #{:clock-monotonic :sha256-hex :log-write}
            (:tamaki.capability/imports envelope)))
+    (is (= #{"kotoba-lang/capability-clock-monotonic"
+             "kotoba-lang/capability-hash-sha256"
+             "kotoba-lang/capability-log-write"}
+           (set (map :capability/repository
+                     (:tamaki.capability/repositories envelope)))))
     (is (nil? (:actor/objective envelope)))
     (is (nil? (:actor/capabilities envelope)))))
 
