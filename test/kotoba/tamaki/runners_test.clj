@@ -28,6 +28,18 @@
            (runners/available-worktree-path
             (.getPath repo) "actor" "codex")))))
 
+(deftest configured-run-reuses-its-existing-isolated-worktree
+  (let [worktree (.toFile
+                  (java.nio.file.Files/createTempDirectory
+                   "tamaki-existing-worktree"
+                   (make-array java.nio.file.attribute.FileAttribute 0)))
+        run {:agent.run/project (.getPath worktree)
+             :agent.run/source-project "/source/repo"
+             :agent.run/runner "codex"
+             :agent.run/replica 3}]
+    (is (= (.getPath worktree)
+           (runners/ensure-run-worktree! run "actor")))))
+
 (deftest selected-tolerates-comma-separated-whitespace-and-blank-entries
   (testing "a human-typed --runners value with a space after the comma still resolves"
     (is (= ["codex" "claude"]

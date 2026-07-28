@@ -84,3 +84,17 @@
                       {:runner runner-id :project project :target target
                        :exit exit})))
     target))
+
+(defn ensure-run-worktree!
+  "Reuse a configured run's live isolated worktree after supervisor recovery.
+  Re-preparing from `:agent.run/project` would nest one generated worktree
+  inside another on every restart, consuming storage and losing source scope."
+  [run actor-token]
+  (let [configured (:agent.run/project run)
+        source (or (:agent.run/source-project run) configured)]
+    (if (and (:agent.run/source-project run)
+             (.isDirectory (io/file configured)))
+      configured
+      (prepare-worktree!
+       source actor-token
+       (str (:agent.run/runner run) "-" (:agent.run/replica run))))))

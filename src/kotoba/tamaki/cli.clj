@@ -701,13 +701,11 @@
                   (fn [run]
                     (let [profile (runners/profile (:agent.run/runner run))
                           configured
-                          {:agent.run/source-project (:agent.run/project run)
+                          {:agent.run/source-project
+                           (or (:agent.run/source-project run)
+                               (:agent.run/project run))
                            :agent.run/project
-                           (runners/prepare-worktree!
-                            (:agent.run/project run)
-                            actor-token
-                            (str (:agent.run/runner run) "-"
-                                 (:agent.run/replica run)))
+                           (runners/ensure-run-worktree! run actor-token)
                            :agent.run/model (:model profile)}]
                       (emit! run :run/configured configured)
                       (run-by-id (:agent.run/id run)))))))
