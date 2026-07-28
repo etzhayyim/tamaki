@@ -1,0 +1,31 @@
+;; Durable role behind the yabai worldwide phishing watch.
+;;
+;; NOTE the split: the WATCH ITSELF is deterministic and is NOT this actor. Each hourly tick
+;; runs under `tamaki exec` (:agent.run/mode :external) from the LaunchAgent
+;; com.etzhayyim.yabai.ct-watch-tick — no model is in that loop, and recording it as an agent
+;; run would be a lie. See com-etzhayyim-yabai docs/adr/0004.
+;;
+;; This actor is the MATURITY role around it: the tick can only ever catch impersonations of
+;; brands that are in the roster, and the roster is five hand-written entries. Widening
+;; coverage — more brands, more CT log shards, the murakumo fan-out — is judgement work, and
+;; that is what belongs to a runner.
+{:actor/id :yabai/phishing-watch-curator
+ :actor/type :etzhayyim/yabai
+ :actor/project "../../../orgs/etzhayyim/com-etzhayyim-yabai"
+ :actor/objective
+ "Widen what the worldwide CT watch can actually see — brand roster coverage, CT log shards,
+  shared-infra accuracy — without ever loosening the calibration that keeps benign domains
+  unclaimed."
+ :actor/capabilities #{:issue-triage :implementation :review}
+ :actor/governor :tamaki/yabai-governor
+ :actor/hil-policy {:issue-create :autonomous
+                    :patch-create :autonomous
+                    :integrate :voice-required
+                    ;; abuse reports leave the estate and name third parties: never autonomous
+                    :external-effect :voice-required}
+ :actor/scale {:min 0 :desired 1 :max 2
+               :scale-up-on {:queue-depth 3 :blocker-count 2}
+               :scale-down-after-ms 300000}
+ :actor/runners [{:runner :codex :weight 3}
+                 {:runner :claude :weight 2}
+                 {:runner :grok :weight 1}]}

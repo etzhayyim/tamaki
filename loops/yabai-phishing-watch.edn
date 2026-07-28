@@ -1,0 +1,44 @@
+;; Maturity loop for the yabai worldwide phishing watch (etzhayyim/com-etzhayyim-yabai).
+;;
+;; NOT the watch itself. The watch is a deterministic hourly tick under
+;; `tamaki exec` + LaunchAgent com.etzhayyim.yabai.ct-watch-tick (ADR-0004); it needs no
+;; model and must not be recorded as if it had one. This loop is the judgement work AROUND
+;; it — the tick can only catch brands that are in the roster, and there are five.
+;;
+;; Registering this spec does NOT start it: bin/tamaki-supervisor drives exactly one
+;; TAMAKI_LOOP_SPEC. To activate:
+;;   bin/tamaki loop ensure --spec loops/yabai-phishing-watch.edn
+;;   bin/tamaki loop list
+;;
+;; Resolve :loop/project relative to TAMAKI_WORKSPACE / FLEET_ROOT / COM_JUNKAWASAKI_ROOT.
+{:loop/id :yabai/phishing-watch
+ :loop/enabled true
+ :loop/description
+ "Widen the worldwide brand-impersonation watch: grow the brand roster, add CT log shards,
+  keep shared-infra ASNs accurate, and prove the murakumo fan-out. Never loosen the
+  calibration — 36 benign domains must keep producing zero claims."
+ :loop/tags #{:yabai :cti :phishing :coverage :continuous}
+ :loop/objective
+ "Raise what the CT watch can SEE, not what it claims. In priority order:
+  (1) grow the brand roster beyond the five hand-written entries in phish-infra/default-brands,
+      deriving candidates from evidence rather than taste, and re-run the benign/impersonation
+      calibration sets after every change;
+  (2) tail more CT log shards than argon2026h2 alone, refreshing ct-logs from the public
+      log list as shards expire;
+  (3) make the murakumo fan-out real — ct_watch --plan already produces a batch that
+      `murakumo task plan --tasks` accepts, but running it needs the checkout present on the
+      nodes;
+  (4) keep shared-ip-asns correct as CDNs change, remembering that a wrong entry silently
+      deletes a real signal.
+  HARD invariant: test_phish_infra's benign set must keep producing zero claims and the
+  impersonation set must keep being caught. A change that raises detection counts by
+  loosening a threshold is a regression, not progress. Never send an abuse report."
+ :loop/project "orgs/etzhayyim/com-etzhayyim-yabai"
+ :loop/workspace-env "COM_JUNKAWASAKI_ROOT"
+ :loop/continuous true
+ :loop/interval-ms 3600000
+ :loop/max-cycles 6
+ :loop/max-failures 3
+ :loop/auto-approve false
+ :loop/organism-name "Yabai"
+ :loop/runners ["codex" "claude" "grok"]}
