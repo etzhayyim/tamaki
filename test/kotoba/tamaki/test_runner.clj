@@ -27,6 +27,7 @@
             [kotoba.tamaki.result-evaluation-test]
             [kotoba.tamaki.service-test]
             [kotoba.tamaki.store-test]
+            [kotoba.tamaki.storage-test]
             [kotoba.tamaki.supervisor-test]
             [kotoba.tamaki.telemetry-test]
             [kotoba.tamaki.topology-projection-test]
@@ -62,6 +63,7 @@
                                'kotoba.tamaki.result-evaluation-test
                                'kotoba.tamaki.service-test
                                'kotoba.tamaki.store-test
+                               'kotoba.tamaki.storage-test
                                'kotoba.tamaki.supervisor-test
                                'kotoba.tamaki.telemetry-test
                                'kotoba.tamaki.topology-projection-test

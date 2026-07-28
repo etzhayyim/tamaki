@@ -153,7 +153,7 @@
                  :expired :terminate
                  :paused :consult-human
                  :preserve-memory :replicate-sealed-memory
-                 :reclaim-storage :compact-derived-projections
+                 :reclaim-storage :reconcile-storage-policy
                  :cognitive-rest :route-local-small-model
                  :earn (if (and paid-demand? receipt?)
                          :request-settlement-approval

@@ -1,0 +1,26 @@
+{:storage.policy/version 1
+ :storage.policy/volume "/System/Volumes/Data"
+ :storage.policy/high-watermark 0.80
+ :storage.policy/target-watermark 0.75
+ :storage.policy/max-reclaim-bytes-per-tick 21474836480
+ :storage.policy/min-annex-copies 2
+
+ ;; Concrete paths belong in the local-private control repository.
+ :storage.policy/allowed-roots ["/private/runtime-cache"
+                                "/private/datalad"]
+ :storage.policy/diskspace-report
+ "/private/diskspace/data/latest.edn"
+ :storage.policy/candidates
+ [{:storage.candidate/id :runtime/stale-children
+   :storage.candidate/type :recreatable-children
+   :storage.candidate/path "/private/runtime-cache"
+   :storage.candidate/recoverability :recreated
+   :storage.candidate/requires-no-open-files? true
+   :storage.candidate/priority 10}
+  {:storage.candidate/id :data/cold-dataset
+   :storage.candidate/type :annex-dataset
+   :storage.candidate/path "/private/datalad/cold-dataset"
+   :storage.candidate/required-remotes ["encrypted-b2"
+                                       "encrypted-external"]
+   :storage.candidate/min-copies 2
+   :storage.candidate/priority 20}]}

@@ -1,0 +1,17 @@
+{:actor/id :tamaki/storage-curator
+ :actor/type :tamaki/deterministic-homeostasis
+ :actor/project "."
+ :actor/objective
+ "Keep local storage below the private policy high watermark. Treat diskspace output as observation only. Delete only allowlisted recreatable content, and drop DataLad content only after named remotes pass verification and git-annex confirms at least two durable copies."
+ :actor/capabilities #{:storage-observation :datalad-lifecycle
+                       :event-observation}
+ :actor/governor :tamaki/human-agency
+ :actor/hil-policy {:observe :autonomous
+                    :delete-recreatable :autonomous
+                    :annex-drop :autonomous
+                    :change-policy :approval-required
+                    :lower-copy-count :blocked}
+ :actor/scale {:min 0 :desired 0 :max 1}
+ :actor/budget {:max-turns 1 :max-tool-calls 0 :max-tokens 0
+                :deadline-ms 300000 :test-timeout-ms 120000}
+ :actor/runners [{:runner :codex :weight 1}]}

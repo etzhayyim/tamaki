@@ -27,6 +27,7 @@
             [kotoba.tamaki.result-evaluation :as result-evaluation]
             [kotoba.tamaki.service :as service]
             [kotoba.tamaki.store :as store]
+            [kotoba.tamaki.storage :as storage]
             [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.telemetry :as telemetry]
             [kotoba.tamaki.topology-projection :as topology-projection]
@@ -72,6 +73,7 @@
        "  tamaki finance observe --file ACCOUNTING.edn\n"
        "  tamaki homeostasis status|tick --policy POLICY.edn [--file OBS.edn]\n"
        "  tamaki store status|sync\n"
+       "  tamaki storage status|reconcile --policy POLICY.edn [--execute]\n"
        "  tamaki maintenance status|cleanup [--execute]\n"
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
@@ -392,6 +394,47 @@
              (print-edn result)
              (if (zero? (:replication/failed result)) 0 1))
     (throw (ex-info "Usage: tamaki store status|sync" {}))))
+
+(defn storage!
+  [{:keys [positional options]}]
+  (let [action (first positional)
+        policy-path (:policy options)]
+    (when (str/blank? policy-path)
+      (throw
+       (ex-info
+        "storage status/reconcile requires --policy POLICY.edn"
+        {})))
+    (let [policy (storage/read-policy policy-path)
+          before (storage/observe-volume policy)
+          plan (storage/plan policy before)]
+      (case action
+        "status"
+        (do (print-edn plan) 0)
+
+        "reconcile"
+        (if-not (:execute options)
+          (do (print-edn (assoc plan :storage/dry-run true)) 0)
+          (let [outcomes (storage/apply-plan! policy plan)
+                after (storage/observe-volume policy)
+                event (storage/event plan outcomes before after (now))]
+            (store/append-event! (store/default-root) event)
+            (print-edn (:tamaki.event/data event))
+            (if (some #(and (= :blocked (:storage.outcome/status %))
+                            (:storage.candidate/selected?
+                             (first
+                              (filter
+                               (fn [candidate]
+                                 (= (:storage.outcome/id %)
+                                    (:storage.candidate/id candidate)))
+                               (:storage/candidates plan)))))
+                      outcomes)
+              1
+              0)))
+
+        (throw
+         (ex-info
+          "Usage: tamaki storage status|reconcile --policy POLICY.edn [--execute]"
+          {}))))))
 
 (defn memory!
   [{:keys [positional options]}]
@@ -2372,6 +2415,7 @@
       "homeostasis" (homeostasis! parsed)
       "memory" (memory! parsed)
       "store" (store! parsed)
+      "storage" (storage! parsed)
       "maintenance" (maintenance! parsed)
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)

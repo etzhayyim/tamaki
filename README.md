@@ -159,6 +159,29 @@ bin/tamaki store status
 bin/tamaki store sync
 ```
 
+Disk pressure is handled by a separate deterministic storage curator. The
+public CLI owns the fail-closed state machine; concrete paths and remote names
+remain in the private local control repository:
+
+```bash
+export TAMAKI_STORAGE_POLICY="$COM_JUNKAWASAKI_ROOT/projects/.tamaki/tamaki-control/storage/policy.edn"
+bin/tamaki storage status --policy "$TAMAKI_STORAGE_POLICY"
+bin/tamaki storage reconcile --policy "$TAMAKI_STORAGE_POLICY"       # dry run
+bin/tamaki storage reconcile --policy "$TAMAKI_STORAGE_POLICY" --execute
+```
+
+`diskspace` reports are observation only. Automatic mutation requires an exact
+private allowlist entry. Recreatable directories are skipped while files are
+open. DataLad content is dropped only after every named remote passes
+`git annex fsck --fast` and `git annex drop` confirms at least two copies.
+The supervisor runs this lane independently every six hours by default, so a
+long model turn cannot starve storage homeostasis.
+
+When physiology enters `:reclaim-storage`, ordinary inference admission is
+throttled and the projected action is `:reconcile-storage-policy`. The
+deterministic storage lane remains alive, so recovery does not depend on
+spending more model tokens.
+
 `federated` is local-first: local events remain authoritative while immutable
 outbox entries wait for Kotobase projection. Murakumo can replicate the sealed
 authority log independently:

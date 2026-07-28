@@ -17,6 +17,8 @@ bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
 self_observation_policy="${TAMAKI_HOMEOSTASIS_POLICY:-}"
 self_observation_file="${TAMAKI_HOMEOSTASIS_OBSERVATION:-}"
 replication_config="${TAMAKI_REPLICATION_CONFIG:-}"
+storage_policy="${TAMAKI_STORAGE_POLICY:-}"
+storage_interval_seconds="${TAMAKI_STORAGE_RECONCILE_SECONDS:-21600}"
 self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
 # Optional second continuous loop. Empty by default because merely ensuring a
 # campaign without a resident runner would present inactive work as active.
@@ -28,6 +30,7 @@ export TAMAKI_WORKSPACE="${TAMAKI_WORKSPACE:-$COM_JUNKAWASAKI_ROOT}"
 export TAMAKI_WORKSPACE_ROOT="${TAMAKI_WORKSPACE_ROOT:-$COM_JUNKAWASAKI_ROOT}"
 export FLEET_ROOT="${FLEET_ROOT:-$COM_JUNKAWASAKI_ROOT}"
 export TAMAKI_STATE_DIR="${TAMAKI_STATE_DIR:-$tamaki_root/.tamaki}"
+storage_policy="${storage_policy:-$COM_JUNKAWASAKI_ROOT/projects/.tamaki/tamaki-control/storage/policy.edn}"
 
 loop_id=""
 if [[ "$self_evolution_mode" == "github" ]]; then
@@ -74,6 +77,7 @@ fi
 actor_pid=""
 control_actor_pid=""
 bridge_pid=""
+storage_pid=""
 cleanup() {
   if [[ -n "$actor_pid" ]] && kill -0 "$actor_pid" 2>/dev/null; then
     kill "$actor_pid" 2>/dev/null || true
@@ -86,6 +90,10 @@ cleanup() {
   if [[ -n "$bridge_pid" ]] && kill -0 "$bridge_pid" 2>/dev/null; then
     kill "$bridge_pid" 2>/dev/null || true
     wait "$bridge_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$storage_pid" ]] && kill -0 "$storage_pid" 2>/dev/null; then
+    kill "$storage_pid" 2>/dev/null || true
+    wait "$storage_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -100,6 +108,7 @@ trap cleanup EXIT INT TERM
         # long implementation run must never starve these resident actors.
         [[ "$discovered_spec" == "$tamaki_root/actors/result-evaluator.edn" ]] && continue
         [[ "$discovered_spec" == "$tamaki_root/actors/loop-gardener.edn" ]] && continue
+        [[ "$discovered_spec" == "$tamaki_root/actors/storage-curator.edn" ]] && continue
         grep -q ':actor/id' "$discovered_spec" || continue
         actor_specs+=("$discovered_spec")
       done
@@ -156,6 +165,16 @@ control_actor_pid=$!
   done
 ) &
 bridge_pid=$!
+
+(
+  while true; do
+    if [[ -f "$storage_policy" ]]; then
+      bin/tamaki storage reconcile --policy "$storage_policy" --execute || true
+    fi
+    sleep "$storage_interval_seconds"
+  done
+) &
+storage_pid=$!
 
 if [[ "$self_evolution_mode" == "github" ]]; then
   wait "$actor_pid"

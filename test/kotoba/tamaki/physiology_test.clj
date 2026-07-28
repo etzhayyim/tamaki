@@ -91,6 +91,15 @@
          (physiology/agent-admission
           {:homeostasis/status :earn} economy)))))
 
+(deftest storage-pressure-routes-to-the-deterministic-curator
+  (let [projection
+        (physiology/decide
+         policy
+         (assoc healthy :storage-free-bytes 50000)
+         1000)]
+    (is (= :reclaim-storage (:homeostasis/status projection)))
+    (is (= :reconcile-storage-policy (:homeostasis/action projection)))))
+
 (deftest crypto-mining-and-self-minting-fail-closed
   (is (thrown? Exception
                (physiology/validate-policy
