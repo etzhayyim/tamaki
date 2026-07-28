@@ -2214,6 +2214,11 @@
                                        {:id issue-id :title work-title
                                         :criteria criteria :signals dynamics}))
                               :candidate-count 1 :blocked-count 0})
+                execution-project
+                (runners/prepare-worktree!
+                 project
+                 (str "loop-" id "-" cycle)
+                 (or runner-id "default"))
                 run (model/agent-run
                      {:goal (str (agent-loop/cycle-goal campaign cycle issue-id)
                                  "\nAcceptance criteria:\n- "
@@ -2227,7 +2232,9 @@
                                                [:visual/status :visual/path
                                                 :visual/findings
                                                 :visual/suggested-issue])))
-                      :project project :mode :local
+                      :project execution-project
+                      :source-project project
+                      :mode :local
                       :model (or (:model runner-profile)
                                  (:tamaki.loop/model campaign))
                       :runner runner-id
