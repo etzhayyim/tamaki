@@ -28,9 +28,11 @@ autonomous secret operations fail closed. Network imports require a non-empty
 URL-prefix allowlist. Write and secret imports require their corresponding
 runtime-limit opt-ins.
 
-`src/kotoba/tamaki/capability.cljc` pins the supported Kototama ABI surface.
-An ABI version change requires an explicit contract migration in both
-repositories; it is not accepted through permissive normalization.
+`kotoba-lang/kotoba-core-contracts` is the shared authority for the vocabulary,
+business-to-import realization map, effects, decisions, envelope schema, and
+supported Kototama ABI surface. `src/kotoba/tamaki/capability.cljc` is only a
+compatibility adapter. An ABI version change requires an explicit shared
+contract migration; it is not accepted through permissive normalization.
 
 ## Initial capability mapping
 
@@ -59,5 +61,7 @@ control guest may move to Wasm now.
 - aiueos may reduce or deny requested grants but cannot silently add grants.
 - A compromised Tamaki control plane still meets an independent Kototama
   admission check at the execution boundary.
+- Tamaki, Kototama, Fleet, and future tenders cannot drift into separate
+  capability vocabularies without changing the shared contract dependency.
 - Observatory can display business capability, realized capability, import,
   grant, limit, and effect-policy as different concepts.
