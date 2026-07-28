@@ -15,6 +15,8 @@ actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
 control_actor_interval_seconds="${TAMAKI_CONTROL_ACTOR_RECONCILE_SECONDS:-60}"
 bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
 family_spec="${TAMAKI_FAMILY_SPEC:-$tamaki_root/organisms/etzhayyim-family.edn}"
+fleet_policy="${TAMAKI_AO_FLEET_POLICY:-$tamaki_root/organisms/etzhayyim-fleet.edn}"
+fleet_interval_seconds="${TAMAKI_AO_FLEET_RECONCILE_SECONDS:-900}"
 self_observation_policy="${TAMAKI_HOMEOSTASIS_POLICY:-}"
 self_observation_file="${TAMAKI_HOMEOSTASIS_OBSERVATION:-}"
 replication_config="${TAMAKI_REPLICATION_CONFIG:-}"
@@ -79,6 +81,7 @@ actor_pid=""
 control_actor_pid=""
 bridge_pid=""
 storage_pid=""
+fleet_pid=""
 cleanup() {
   if [[ -n "$actor_pid" ]] && kill -0 "$actor_pid" 2>/dev/null; then
     kill "$actor_pid" 2>/dev/null || true
@@ -95,6 +98,10 @@ cleanup() {
   if [[ -n "$storage_pid" ]] && kill -0 "$storage_pid" 2>/dev/null; then
     kill "$storage_pid" 2>/dev/null || true
     wait "$storage_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$fleet_pid" ]] && kill -0 "$fleet_pid" 2>/dev/null; then
+    kill "$fleet_pid" 2>/dev/null || true
+    wait "$fleet_pid" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT INT TERM
@@ -173,6 +180,16 @@ control_actor_pid=$!
   done
 ) &
 bridge_pid=$!
+
+(
+  while true; do
+    if [[ -f "$fleet_policy" ]]; then
+      bin/tamaki fleet reconcile --policy "$fleet_policy" --execute || true
+    fi
+    sleep "$fleet_interval_seconds"
+  done
+) &
+fleet_pid=$!
 
 (
   while true; do

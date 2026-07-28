@@ -1,0 +1,18 @@
+{:ao.fleet/version 1
+ :ao.fleet/family :tamaki/etzhayyim
+ :ao.fleet/selection {:max-active 4
+                      :dispatch-per-reconcile 1
+                      :min-score 0.5
+                      :revisit-after-ms 3600000}
+ :ao.fleet/weights {:open-issue 3.0
+                    :open-pr 2.0
+                    :freshness 1.0
+                    :representative 0.1}
+ :ao.fleet/runners [:codex :claude :claude-zai :grok]
+ :ao.fleet/authority {:issue :radicle-first
+                      :github :public-mirror
+                      :integrate :approval-required
+                      :cross-ao :blocked}
+ :ao.fleet/resources {:global-wip 6
+                      :respect-homeostasis true
+                      :token-bypass false}}

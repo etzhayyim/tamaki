@@ -11,7 +11,8 @@
     :loop/model :loop/continuous :loop/interval-ms :loop/max-cycles
     :loop/max-failures :loop/auto-approve :loop/enabled
     :loop/organism-name :loop/organism-generation :loop/organism-parent
-    :loop/workspace-env :loop/description :loop/tags})
+    :loop/workspace-env :loop/description :loop/tags :loop/fitness
+    :loop/ao-id})
 
 (defn env
   "Lookup process environment. Public so tests can rebind without shell env."
@@ -239,6 +240,7 @@
        :organism-generation (when-let [g (:loop/organism-generation spec)]
                               (str g))
        :organism-parent (:loop/organism-parent spec)
+       :ao-id (:loop/ao-id spec)
        ;; Internal: durable match key so objective prose can evolve.
        :spec-id (spec-id-str (:loop/id spec))
        :spec-path (:loop/spec-path spec)}

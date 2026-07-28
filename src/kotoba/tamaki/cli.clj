@@ -6,6 +6,7 @@
             [clojure.string :as str]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.active-inference :as active-inference]
+            [kotoba.tamaki.ao-fleet :as ao-fleet]
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.business :as business]
             [kotoba.tamaki.bridge :as bridge]
@@ -78,6 +79,7 @@
        "  tamaki storage status|reconcile --policy POLICY.edn [--execute]\n"
        "  tamaki maintenance status|cleanup [--execute]\n"
        "  tamaki family status|sync [--spec FAMILY.edn] [--execute]\n"
+       "  tamaki fleet status|reconcile [--policy FLEET.edn] [--execute]\n"
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
@@ -229,7 +231,9 @@
                     ["gh" "repo" "list" organization
                      "--limit" "1000"
                      "--json"
-                     "name,nameWithOwner,url,visibility,isArchived,defaultBranchRef"])
+                     (str "name,nameWithOwner,url,visibility,isArchived,"
+                          "defaultBranchRef,pushedAt,updatedAt,issues,"
+                          "pullRequests,isFork")])
             _ (delivery/succeeded! result "GitHub family observation")
             registry (family/projection
                       spec
@@ -1802,6 +1806,7 @@
                    :auto-approve (boolean (:auto-approve options))
                    :continuous (boolean (:continuous options))
                    :organism individual
+                   :ao (:ao-id options)
                    :spec-id (:spec-id options)
                    :spec-path (:spec-path options)}
                   created-at)]
@@ -2226,6 +2231,8 @@
                       :model (or (:model runner-profile)
                                  (:tamaki.loop/model campaign))
                       :runner runner-id
+                      :organism (or (:tamaki.loop/ao campaign)
+                                    (:tamaki.loop/organism campaign))
                       :capabilities #{:git :radicle}}
                      (now))]
             (store/append-event! (store/default-root)
@@ -2374,6 +2381,161 @@
               "Usage: tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ..."
               {})))))
 
+(defn- ensure-fleet-loop! [path]
+  (let [spec (loop-registry/read-spec path)
+        output (java.io.StringWriter.)]
+    (binding [*out* output]
+      (ensure-loop!
+       {:positional []
+        :options (loop-registry/ensure-options spec)}))
+    (edn/read-string (str output))))
+
+(defn- append-fleet-event! [kind data]
+  (store/append-event!
+   (store/default-root)
+   {:tamaki.event/version 1
+    :tamaki.event/id (str (random-uuid))
+    :tamaki.event/run "fleet::etzhayyim"
+    :tamaki.event/parent nil
+    :tamaki.event/kind kind
+    :tamaki.event/at (now)
+    :tamaki.event/data data}))
+
+(defn- ensure-fleet-repository! [candidate]
+  (let [project (:ao/project candidate)
+        checkout (io/file project)
+        url (str "https://github.com/" (:ao/repository candidate) ".git")
+        rid (get-in candidate [:ao/signals :radicle-id])]
+    ;; A linked worktree has a `.git` file instead of a directory; it is still
+    ;; a complete checkout and must never be cloned over.
+    (when-not (.exists (io/file checkout ".git"))
+      (.mkdirs (.getParentFile checkout))
+      (delivery/succeeded!
+       (delivery/execute! ["git" "clone" "--no-single-branch" url project])
+       (str "AO checkout hydration " (:ao/id candidate))))
+    (let [existing (delivery/execute! ["git" "remote" "get-url" "rad"]
+                                      project)]
+      (when-not (zero? (:exit existing))
+        (when (str/blank? rid)
+          (throw (ex-info "AO has no Radicle identity"
+                          {:ao/id (:ao/id candidate)})))
+        (let [fetch-url (str/replace rid #"^rad:" "rad://")
+              node (-> (delivery/succeeded!
+                        (delivery/execute! ["rad" "self" "--nid"] project)
+                        "Radicle node identity")
+                       :out str/trim)]
+          (delivery/succeeded!
+           (delivery/execute! ["git" "remote" "add" "rad" fetch-url]
+                              project)
+           "Radicle remote registration")
+          (delivery/succeeded!
+           (delivery/execute!
+            ["git" "remote" "set-url" "--push" "rad"
+             (str fetch-url "/" node)]
+            project)
+           "Radicle push authority registration"))))
+    candidate))
+
+(defn fleet!
+  [{:keys [positional options]}]
+  (let [[action] positional
+        root (store/default-root)
+        policy-path (or (:policy options)
+                        "organisms/etzhayyim-fleet.edn")]
+    (case action
+      "status"
+      (do
+        (print-edn
+         (if-let [state (ao-fleet/read-state root)]
+           (ao-fleet/public-summary state)
+           {:ao.fleet/status :unobserved
+            :ao.fleet/policy policy-path}))
+        0)
+
+      "reconcile"
+      (let [registry
+            (or (family/read-registry root)
+                (throw (ex-info
+                        "AO fleet requires a reconciled family registry"
+                        {:run "tamaki family sync --execute"})))
+            policy (ao-fleet/read-policy policy-path)
+            previous (ao-fleet/read-state root)
+            workspace (or (System/getenv "TAMAKI_WORKSPACE")
+                          (System/getenv "COM_JUNKAWASAKI_ROOT")
+                          (System/getProperty "user.dir"))
+            at (now)
+            projection
+            (ao-fleet/projection policy registry workspace previous at)]
+        (if-not (:execute options)
+          (do
+            (print-edn
+             (assoc (ao-fleet/public-summary projection)
+                    :ao.fleet/executed? false))
+            0)
+          (let [_hydrated
+                (doseq [candidate (:ao.fleet/selected projection)]
+                  (ensure-fleet-repository! candidate))
+                paths
+                (ao-fleet/write-loop-specs!
+                 root policy (:ao.fleet/selected projection))
+                ensured-campaigns (mapv ensure-fleet-loop! paths)
+                selected-specs
+                (mapv loop-registry/read-spec paths)
+                selected-ids
+                (set (map #(loop-registry/spec-id-str (:loop/id %))
+                          selected-specs))
+                _ (doseq [campaign (vals (campaigns))
+                          :let [spec-id (:tamaki.loop/spec-id campaign)]
+                          :when (and (= :active (:tamaki.loop/status campaign))
+                                     (str/starts-with? (str spec-id) "ao/")
+                                     (not (contains? selected-ids
+                                                     (str spec-id))))]
+                    (append-loop-event!
+                     campaign :loop/completed
+                     {:reason :ao-fleet-deactivated}))
+                dispatch-ids (set (map :ao/id (:ao.fleet/dispatch projection)))
+                dispatch-campaigns
+                (filterv #(contains? dispatch-ids (:tamaki.loop/ao %))
+                         ensured-campaigns)
+                results
+                (mapv
+                 (fn [campaign]
+                   (try
+                     (tick-loop! (:tamaki.loop/id campaign))
+                     {:ao/id (:tamaki.loop/ao campaign)
+                      :loop/id (:tamaki.loop/id campaign)
+                      :status :completed}
+                     (catch Exception error
+                       {:ao/id (:tamaki.loop/ao campaign)
+                        :loop/id (:tamaki.loop/id campaign)
+                        :status :deferred
+                        :reason (.getMessage error)
+                        :data (ex-data error)})))
+                 dispatch-campaigns)
+                attempted-at
+                (reduce (fn [m {:keys [ao/id]}]
+                          (assoc m id at))
+                        (:ao.fleet/last-dispatched-at projection)
+                        results)
+                state (assoc projection
+                             :ao.fleet/last-dispatched-at attempted-at
+                             :ao.fleet/results results)]
+            (ao-fleet/write-state! root state)
+            (append-fleet-event!
+             :ao.fleet/reconciled
+             (assoc (ao-fleet/public-summary state)
+                    :ao.fleet/results results))
+            (print-edn
+             (assoc (ao-fleet/public-summary state)
+                    :ao.fleet/results results
+                    :ao.fleet/executed? true))
+            0)))
+
+      (throw
+       (ex-info
+        "Usage: tamaki fleet status|reconcile [--policy FLEET.edn] [--execute]"
+        {})))))
+
 (defn bridge!
   [{:keys [positional options]}]
   (let [action (first positional)
@@ -2473,6 +2635,7 @@
       "storage" (storage! parsed)
       "maintenance" (maintenance! parsed)
       "family" (family! parsed)
+      "fleet" (fleet! parsed)
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)

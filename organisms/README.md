@@ -18,3 +18,9 @@ deterministic reconciliation in its bridge/observation lane (five minutes by
 default), so repository creation and archival update family state without an
 LLM or token spend. Credentials, private observations, issues, and
 organization-specific control data never enter this public package.
+
+`etzhayyim-fleet.edn` controls activity rather than membership. It scores
+public repository signals, selects a bounded active set, rotates equal-score
+AOs fairly, hydrates only selected checkouts, reconciles their declared
+Radicle identity, and dispatches at most one full issue/source/review cycle per
+reconciliation. The loop pauses at human approval before integration.

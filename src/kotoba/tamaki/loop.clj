@@ -13,7 +13,7 @@
 
 (defn campaign
   [{:keys [id objective project model runner runners max-cycles interval-ms
-           max-failures auto-approve continuous organism spec-id spec-path]
+           max-failures auto-approve continuous organism ao spec-id spec-path]
     :or {max-cycles 10 interval-ms 60000 max-failures 3 auto-approve false
          continuous false}}
    now-ms]
@@ -54,6 +54,8 @@
            :tamaki.loop/updated-at now-ms}
     (not (clojure.string/blank? (str spec-id)))
     (assoc :tamaki.loop/spec-id (str spec-id))
+    (not (clojure.string/blank? (str ao)))
+    (assoc :tamaki.loop/ao (str ao))
     (not (clojure.string/blank? (str spec-path)))
     (assoc :tamaki.loop/spec-path (str spec-path))))
 

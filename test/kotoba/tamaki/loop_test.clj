@@ -14,6 +14,21 @@
     (is (= 2 (:tamaki.loop/cycles folded)))
     (is (= :max-cycles (loop/stop-reason folded)))))
 
+(deftest repository-ao-identity-survives-campaign-folding
+  (let [campaign (loop/campaign
+                  {:objective "grow repo evidence"
+                   :project "/repo"
+                   :ao "ao:github:etzhayyim/example"}
+                  1)
+        started (loop/loop-event campaign :loop/started 1
+                                 {:campaign campaign})
+        folded (get (loop/campaigns [started])
+                    (:tamaki.loop/id campaign))]
+    (is (= "ao:github:etzhayyim/example"
+           (:tamaki.loop/ao campaign)))
+    (is (= "ao:github:etzhayyim/example"
+           (:tamaki.loop/ao folded)))))
+
 (deftest failures-have-a-circuit-breaker
   (let [campaign (loop/campaign {:objective "improve"
                                  :project "/repo"

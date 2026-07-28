@@ -48,19 +48,25 @@
      :ao/family-name (get-in spec [:family/defaults :ao/family-name] "Tamaki")
      :ao/given-name repo-name
      :ao/repository {:slug slug
+                     :name repo-name
                      :url (:url repository)
                      :visibility (some-> (:visibility repository)
                                          name
                                          keyword)
                      :default-branch
                      (get-in repository [:defaultBranchRef :name])
+                     :pushed-at (:pushedAt repository)
+                     :updated-at (:updatedAt repository)
+                     :fork? (boolean (:isFork repository))
                      :archived? (boolean (:isArchived repository))}
      :ao/status (if (:isArchived repository) :dormant :active)
      :ao/representative?
      (= repo-name (:family/representative-repository spec))
      :ao/authority :repository-local
      :ao/genome :git-history
-     :ao/memory [:issues :patches :events]}))
+     :ao/memory [:issues :patches :events]
+     :ao/signals {:open-issues (count (:issues repository))
+                  :open-pull-requests (count (:pullRequests repository))}}))
 
 (defn projection [spec repositories observed-at]
   (validate-spec! spec)

@@ -58,6 +58,41 @@ bin/tamaki doctor
 bin/tamaki contract
 ```
 
+## Etzhayyim AO fleet
+
+Etzhayyim family membership and activity are separate controls. Family sync
+observes every repository; fleet reconciliation activates only the
+highest-leverage repository-bound AOs within a global WIP limit:
+
+```sh
+# Refresh the complete 1 repo = 1 AO registry.
+bin/tamaki family sync --execute
+
+# Preview activation scores and the next dispatch.
+TAMAKI_WORKSPACE=/path/to/workspace bin/tamaki fleet reconcile
+
+# Materialize local LoopSpecs, reconcile Radicle remotes, and dispatch one
+# bounded cycle. Integration remains human-approval-required.
+TAMAKI_WORKSPACE=/path/to/workspace \
+  bin/tamaki fleet reconcile --execute
+
+bin/tamaki fleet status
+```
+
+The resident supervisor repeats family observation every five minutes and AO
+fleet reconciliation every fifteen minutes. `organisms/etzhayyim-fleet.edn`
+defines the WIP cap, score weights, runner pool, and authority. A selected AO
+gets a runtime LoopSpec under ignored `.tamaki/families/loops/`; the public
+repository stores policy, not the live inventory. Missing public checkouts are
+hydrated without shallow history. Radicle is the issue/patch authority,
+GitHub is a public mirror, and cross-AO authority is blocked.
+
+Each generated campaign and AgentRun carries the stable repository identity
+`ao:github:etzhayyim/<repo>`. Equal-score AOs rotate by oldest dispatch so an
+alphabetical prefix cannot monopolize capacity. Homeostasis, global WIP,
+failure pressure, independent review, and the voice/HIL integration boundary
+can all defer work without losing the activation queue.
+
 ## Concurrent runner pool
 
 Tamaki treats each subscription CLI/account as a distinct, durable worker.

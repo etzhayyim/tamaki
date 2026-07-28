@@ -54,6 +54,40 @@ The representative AO may observe family aggregates and propose coordination.
 Changing another AO's code, policy, credentials, objective, or memory still
 requires that AO's normal issue, review, capability, and human-authority gates.
 
+## Family activation and metabolism
+
+Membership does not imply continuous inference. The AO fleet controller treats
+all active Etzhayyim repositories as a potential population and maintains two
+separate stocks:
+
+- **eligible population**: active AOs with a declared Radicle identity;
+- **activated population**: the highest-scoring AOs admitted under the current
+  global WIP and homeostasis limits.
+
+Activation score is evidence-based: open issue pressure, open review pressure,
+repository freshness, local/Radicle readiness, and dispatch history. The
+controller selects only a bounded set and dispatches a bounded number per
+reconciliation. Equal-score AOs rotate by oldest dispatch. Missing selected
+checkouts may be hydrated, but history is never made shallow.
+
+An activated AO receives a repository-bound campaign:
+
+```text
+observe Radicle issues
+  → rank unblocked issue
+  → implement source + tests
+  → create Radicle patch
+  → independent output review
+  → human approval boundary
+  → fast-forward integration
+```
+
+GitHub is a public mirror. A campaign carries its stable `:tamaki.loop/ao`
+identity into AgentRuns and activity; Runner and Model remain replaceable
+metabolic resources. Failure pressure, token reserve, storage reserve, global
+WIP, or human authority may defer dispatch without removing the AO from the
+family.
+
 ### Actor
 
 An Actor is a durable organizational role. It is defined by an `ActorSpec` and

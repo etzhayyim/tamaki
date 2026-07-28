@@ -1,6 +1,7 @@
 (ns kotoba.tamaki.test-runner
   (:require [clojure.test :as test]
             [kotoba.tamaki.active-inference-test]
+            [kotoba.tamaki.ao-fleet-test]
             [kotoba.tamaki.actor-test]
             [kotoba.tamaki.business-test]
             [kotoba.tamaki.capability-test]
@@ -38,6 +39,7 @@
 
 (defn run [_]
   (let [result (test/run-tests 'kotoba.tamaki.model-test
+                               'kotoba.tamaki.ao-fleet-test
                                'kotoba.tamaki.physiology-test
                                'kotoba.tamaki.replication-test
                                'kotoba.tamaki.active-inference-test
