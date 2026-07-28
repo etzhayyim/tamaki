@@ -53,10 +53,19 @@
                edn/read-string))))
 
 (defn due?
+  "True when a new sealed replica should be cut.
+
+  Absence of a prior receipt always means due: the min-interval only
+  throttles *after* the first successful snapshot. Treating a missing
+  receipt as epoch-0 previously let a synthetic or early clock postpone
+  the initial disaster-recovery baseline, and `reconcile!` would then
+  NPE while computing `:replication/next-at` from a nil receipt."
   [config latest now-ms]
-  (let [minimum (long (or (:replication/min-interval-ms config) 21600000))
-        previous (long (or (:replication/at latest) 0))]
-    (>= (- now-ms previous) minimum)))
+  (if (nil? latest)
+    true
+    (let [minimum (long (or (:replication/min-interval-ms config) 21600000))
+          previous (long (or (:replication/at latest) 0))]
+      (>= (- now-ms previous) minimum))))
 
 (defn- committed-length [file]
   (with-open [raf (RandomAccessFile. file "r")]
@@ -209,11 +218,16 @@
   (let [config (validate-config config)
         latest (latest-receipt root)]
     (if-not (due? config latest now-ms)
-      (assoc latest
-             :replication/status :not-due
-             :replication/next-at
-             (+ (:replication/at latest)
-                (long (or (:replication/min-interval-ms config) 21600000))))
+      ;; `due?` is true whenever `latest` is nil, so this branch always has a
+      ;; prior receipt to restate. Fail closed rather than invent a schedule.
+      (do
+        (when (nil? latest)
+          (throw (ex-info "Replication not-due without a prior receipt" {})))
+        (assoc latest
+               :replication/status :not-due
+               :replication/next-at
+               (+ (long (:replication/at latest))
+                  (long (or (:replication/min-interval-ms config) 21600000)))))
       (let [snapshot (seal! root config now-ms)
             targets (mapv #(replicate-target!
                             snapshot (:replication/organism config) %)

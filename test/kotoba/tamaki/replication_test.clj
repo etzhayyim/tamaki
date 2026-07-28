@@ -25,10 +25,39 @@
 
 (deftest minimum-interval-bounds-replication
   (is (replication/due? config nil 1000))
+  (testing "first snapshot is always due even under a synthetic early clock"
+    ;; Without a prior receipt the min-interval must not postpone establishing
+    ;; the initial disaster-recovery baseline. Previously `(due? … nil 0)` was
+    ;; false when now-ms < min-interval, and reconcile! then NPEd on nil.
+    (is (replication/due? config nil 0))
+    (is (replication/due? config nil 999)))
   (is (not (replication/due?
             config {:replication/at 900} 1000)))
   (is (replication/due?
        config {:replication/at 900} 1900)))
+
+(deftest not-due-restates-the-prior-receipt-schedule
+  ;; When a prior receipt exists and the min-interval has not elapsed,
+  ;; reconcile! must restate that receipt with :not-due and a concrete
+  ;; :replication/next-at — never invent a nil-based schedule.
+  (let [root (io/file (System/getProperty "java.io.tmpdir")
+                      (str "tamaki-replication-" (random-uuid)))
+        receipts (io/file root "replication" "receipts")
+        prior {:replication/version 1
+               :replication/status :healthy
+               :replication/at 900
+               :replication/durable-replicas 3}]
+    (try
+      (.mkdirs receipts)
+      (spit (io/file receipts "900.edn") (pr-str prior))
+      (let [result (replication/reconcile! (.getPath root) config 1000)]
+        (is (= :not-due (:replication/status result)))
+        (is (= 1900 (:replication/next-at result)))
+        (is (= 3 (:replication/durable-replicas result)))
+        (is (= 900 (:replication/at result))))
+      (finally
+        (doseq [file (reverse (file-seq root))]
+          (.delete file))))))
 
 (deftest observation-update-preserves-comments
   (let [file (io/file (System/getProperty "java.io.tmpdir")
