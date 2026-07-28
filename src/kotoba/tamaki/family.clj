@@ -113,7 +113,12 @@
                   (into-array StandardCopyOption
                               [StandardCopyOption/ATOMIC_MOVE
                                StandardCopyOption/REPLACE_EXISTING]))
-      (catch java.nio.file.AtomicMoveNotSupportedException _
+      ;; NOT AtomicMoveNotSupportedException: babashka's SCI cannot resolve that class,
+      ;; and an unresolvable class in a catch clause fails at ANALYSIS time — which takes
+      ;; down the whole kotoba.tamaki.cli namespace, i.e. every `bin/tamaki` invocation
+      ;; (supervisor, every loop job, and external `tamaki exec` ticks). Its supertype
+      ;; java.io.IOException is resolvable and keeps the fallback just as narrow.
+      (catch java.io.IOException _
         (Files/move temp (.toPath target)
                     (into-array StandardCopyOption
                                 [StandardCopyOption/REPLACE_EXISTING]))))
