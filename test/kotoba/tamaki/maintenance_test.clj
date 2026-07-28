@@ -116,10 +116,45 @@
    (java.nio.file.Files/createTempDirectory
     prefix (make-array java.nio.file.attribute.FileAttribute 0))))
 
+(deftest cleanup-preserves-worktree-when-conflict-inspection-fails
+  (let [source (temp-dir "tamaki-maint-inspection-source")
+        project (io/file (.getParentFile source)
+                         (str "." (.getName source)
+                              "-tamaki-actor-codex-1"))
+        run (assoc terminal-run
+                   :agent.run/source-project (.getPath source)
+                   :agent.run/project (.getPath project))]
+    (.mkdir project)
+    (with-redefs [delivery/*process-fn*
+                  (fn [argv _]
+                    (cond
+                      (= "status" (nth argv 3))
+                      {:exit 0 :out "" :err ""}
+
+                      (= "diff" (nth argv 3))
+                      {:exit 128 :out "" :err "inspection failed"}
+
+                      :else
+                      {:exit 0 :out "abc\n" :err ""}))]
+      (let [result (maintenance/inspect-run run 600002)]
+        (is (= :preserve (:maintenance/disposition result)))
+        (is (= :conflict-inspection-failed
+               (:maintenance/reason result)))))))
+
 (deftest inspect-source-conflict-is-nil-when-the-canonical-repo-is-clean
   (with-redefs [delivery/*process-fn* (fn [_ _] {:exit 0 :out "" :err ""})]
     (let [source (temp-dir "tamaki-maint-clean-source")]
       (is (nil? (maintenance/inspect-source-conflict (.getPath source)))))))
+
+(deftest inspect-source-conflict-fails-closed-when-git-inspection-fails
+  (with-redefs [delivery/*process-fn*
+                (fn [_ _] {:exit 128 :out "" :err "not a repository"})]
+    (let [source (temp-dir "tamaki-maint-failed-source")
+          result (maintenance/inspect-source-conflict (.getPath source))]
+      (is (= :conflict (:maintenance/disposition result)))
+      (is (= :canonical-inspection-failed (:maintenance/reason result)))
+      (is (= [] (:maintenance/conflicts result)))
+      (is (= (.getPath source) (:maintenance/project result))))))
 
 (deftest inspect-source-conflict-detects-unmerged-paths-on-the-canonical-repo
   (with-redefs [delivery/*process-fn*

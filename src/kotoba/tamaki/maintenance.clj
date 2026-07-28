@@ -92,10 +92,14 @@
           :maintenance/run (:agent.run/id run)
           :maintenance/status (:agent.run/status run)
           :maintenance/conflicts conflict-paths}
-         (cond
-           (seq conflict-paths)
-           {:maintenance/disposition :conflict
-            :maintenance/reason :unmerged-paths}
+          (cond
+            (not (zero? (:exit conflicts)))
+            {:maintenance/disposition :preserve
+             :maintenance/reason :conflict-inspection-failed}
+
+            (seq conflict-paths)
+            {:maintenance/disposition :conflict
+             :maintenance/reason :unmerged-paths}
 
            (not clean?)
            {:maintenance/disposition :preserve
@@ -121,6 +125,13 @@
                      (remove str/blank?) vec)
           lock (io/file source ".git" "index.lock")]
       (cond
+        (not (zero? (:exit result)))
+        {:maintenance/disposition :conflict
+         :maintenance/project source
+         :maintenance/source source
+         :maintenance/reason :canonical-inspection-failed
+         :maintenance/conflicts []}
+
         (seq paths)
         {:maintenance/disposition :conflict
          :maintenance/project source
