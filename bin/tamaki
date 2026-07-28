@@ -1,6 +1,25 @@
 #!/bin/sh
 set -eu
 
+# Resolve deps.edn so git-pinned siblings (hil, kotoba-core-contracts) and
+# Maven jars (cheshire) are on the classpath. A bare
+# `bb -cp src:../hil/src` silently drops those deps and fails at require
+# time for kotoba.core.actor-capability after the capability extract.
+#
+# Prefer babashka for fast startup once the classpath is known; fall back
+# to the JVM main when bb is unavailable.
+
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-exec bb -cp "$ROOT/src:$ROOT/../hil/src" -m kotoba.tamaki.cli "$@"
+cd "$ROOT"
+
+if ! command -v clojure >/dev/null 2>&1; then
+  echo "tamaki: clojure CLI is required to resolve deps.edn classpath" >&2
+  exit 127
+fi
+
+CP=$(clojure -Spath)
+if command -v bb >/dev/null 2>&1; then
+  exec bb -cp "$CP" -m kotoba.tamaki.cli "$@"
+fi
+exec clojure -M:run "$@"

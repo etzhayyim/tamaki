@@ -1,4 +1,7 @@
 {:paths ["src" "test"]
  :tasks
- {tamaki {:task (apply shell "bb" "-cp" "src:../hil/src" "-m" "kotoba.tamaki.cli" *command-line-args*)}
-  test {:task (shell "bb" "-cp" "src:test:../hil/src" "-m" "kotoba.tamaki.test-runner")}}}
+ {;; bin/tamaki owns classpath resolution from deps.edn so bb and the JVM
+  ;; share one pin set (hil, kotoba-core-contracts, cheshire).
+  tamaki {:task (apply shell "bin/tamaki" *command-line-args*)}
+  ;; Documented deterministic suite; keeps pins only in deps.edn.
+  test {:task (shell "clojure" "-M:test")}}}

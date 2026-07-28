@@ -89,6 +89,22 @@
                "murakumo.core")]
     (into ["bb" "-cp" (str (io/file root "src")) "-m" main] args)))
 
+(def required-shared-namespaces
+  "Namespaces bin/tamaki must resolve before any command runs.
+
+  After capability extraction, a babashka -cp of only src + sibling hil
+  fails at require time for kotoba.core.actor-capability. deps.edn pins
+  (hil, kotoba-core-contracts) must be on the classpath."
+  '[kotoba.core.actor-capability
+    kotoba.core.capability-repository
+    hil.core])
+
+(defn shared-contract-ready?
+  "True when every shared namespace required by the operator entrypoint is
+  already loaded on this classpath."
+  []
+  (every? #(some? (find-ns %)) required-shared-namespaces))
+
 (defn readiness []
   (let [kc (str (io/file (sibling "kotoba-code") "bin" "kotoba-code"))
         fleet (str (io/file (sibling "kotoba-fleet") "bin"
@@ -97,6 +113,10 @@
     {:tamaki {:ok? true}
      :bb {:ok? (command-exists? "bb")}
      :nbb {:ok? (command-exists? "nbb")}
+     ;; bin/tamaki resolves deps.edn via `clojure -Spath` before launching bb.
+     :clojure {:ok? (command-exists? "clojure")}
+     :capability-contract {:ok? (shared-contract-ready?)
+                           :namespaces required-shared-namespaces}
      :kotoba-code {:ok? (executable? kc) :path kc}
      :kotoba-fleet {:ok? (.exists (io/file fleet)) :path fleet}
      :murakumo {:ok? (.exists (io/file murakumo)) :path murakumo}

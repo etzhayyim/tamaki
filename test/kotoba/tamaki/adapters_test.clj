@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.adapters-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.model :as model]))
 
@@ -49,3 +50,29 @@
                 0)]
       (is (zero? (adapters/execute! ["true"])))
       (is (= {"KC_LOOP_ID" "run-1"} @observed)))))
+
+(deftest shared-contract-namespaces-must-be-on-the-classpath
+  ;; Regression for the post-capability-extract failure mode: bb launched with
+  ;; only `src:../hil/src` could not require kotoba.core.actor-capability, so
+  ;; every bin/tamaki and bb test invocation died before dispatch.
+  (is (true? (adapters/shared-contract-ready?)))
+  (doseq [ns-sym adapters/required-shared-namespaces]
+    (is (some? (find-ns ns-sym)) (str ns-sym)))
+  (let [report (adapters/readiness)]
+    (is (true? (get-in report [:capability-contract :ok?])))
+    (is (= adapters/required-shared-namespaces
+           (get-in report [:capability-contract :namespaces])))
+    (is (true? (get-in report [:clojure :ok?]))
+        "bin/tamaki resolves deps.edn via the clojure CLI")))
+
+(deftest bin-tamaki-resolves-deps-edn-classpath
+  ;; Guard the operator entrypoint: sibling-only babashka classpaths are the
+  ;; exact regression that took down supervisors after the capability extract.
+  (let [script (slurp "bin/tamaki")
+        bb-edn (slurp "bb.edn")]
+    (testing "bin/tamaki uses deps.edn, not a sibling-only classpath"
+      (is (str/includes? script "clojure -Spath"))
+      (is (not (str/includes? script "$ROOT/src:$ROOT/../hil/src"))))
+    (testing "bb tasks share the fixed entrypoint and JVM suite"
+      (is (str/includes? bb-edn "bin/tamaki"))
+      (is (str/includes? bb-edn "\"clojure\" \"-M:test\"")))))

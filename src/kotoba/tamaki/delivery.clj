@@ -49,18 +49,38 @@
 (defn issue-close-command [issue-id]
   ["rad" "issue" "state" "--no-announce" "--closed" issue-id])
 
-(defn git-status-command [] ["git" "status" "--porcelain"])
+(defn git-status-command [] ["git" "status" "--porcelain=v1" "-z"])
 (defn porcelain-paths-for-line [line]
   (let [path (subs line (min 3 (count line)))]
     (if-let [[_ source destination] (re-matches #"(.+) -> (.+)" path)]
       [source destination]
       [path])))
 
+(defn- nul-porcelain-paths [output]
+  (loop [records (str/split output #"\u0000" -1)
+         paths []]
+    (let [record (first records)]
+      (if (str/blank? record)
+        paths
+        (let [status (subs record 0 (min 2 (count record)))
+              path (subs record (min 3 (count record)))
+              rename-or-copy? (boolean (re-find #"[RC]" status))]
+          (if rename-or-copy?
+            ;; Porcelain v1 -z places the destination in this record and the
+            ;; source in the following NUL-delimited field. Keep both paths so
+            ;; an allowlist cannot conceal one side of a rename or copy.
+            (recur (nnext records) (conj paths (second records) path))
+            (recur (next records) (conj paths path))))))))
+
 (defn porcelain-paths [output]
-  (->> (str/split-lines (or output ""))
-       (remove str/blank?)
-       (mapcat porcelain-paths-for-line)
-       vec))
+  (let [output (or output "")]
+    (if (str/includes? output "\u0000")
+      (nul-porcelain-paths output)
+      ;; Retain parsing support for stored legacy/non-NUL status evidence.
+      (->> (str/split-lines output)
+           (remove str/blank?)
+           (mapcat porcelain-paths-for-line)
+           vec))))
 
 (defn git-add-command [paths] (into ["git" "add" "--"] paths))
 (defn git-commit-command [message] ["git" "commit" "-m" message])
