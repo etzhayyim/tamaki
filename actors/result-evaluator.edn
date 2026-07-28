@@ -12,5 +12,7 @@
                     :change-authority :blocked}
  :actor/scale {:min 0 :desired 1 :max 1
                :scale-down-after-ms 300000}
+ :actor/budget {:max-turns 8 :max-tool-calls 20 :max-tokens 3000
+                :deadline-ms 300000 :test-timeout-ms 120000}
  :actor/runners [{:runner :codex :weight 1}
                  {:runner :claude :weight 1}]}

@@ -20,6 +20,7 @@
             [kotoba.tamaki.intelligence-test]
             [kotoba.tamaki.kaizen-test]
             [kotoba.tamaki.model-test]
+            [kotoba.tamaki.physiology-test]
             [kotoba.tamaki.runners-test]
             [kotoba.tamaki.result-test]
             [kotoba.tamaki.result-evaluation-test]
@@ -34,6 +35,7 @@
 
 (defn run [_]
   (let [result (test/run-tests 'kotoba.tamaki.model-test
+                               'kotoba.tamaki.physiology-test
                                'kotoba.tamaki.active-inference-test
                                'kotoba.tamaki.actor-test
                                'kotoba.tamaki.business-test

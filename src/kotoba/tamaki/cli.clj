@@ -21,6 +21,7 @@
             [kotoba.tamaki.mail :as mail]
             [kotoba.tamaki.maintenance :as maintenance]
             [kotoba.tamaki.model :as model]
+            [kotoba.tamaki.physiology :as physiology]
             [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.result-evaluation :as result-evaluation]
             [kotoba.tamaki.service :as service]
@@ -67,6 +68,8 @@
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
        "  tamaki content status --id CONTENT-ID\n"
        "  tamaki finance observe --file ACCOUNTING.edn\n"
+       "  tamaki homeostasis status|tick --policy POLICY.edn [--file OBS.edn]\n"
+       "  tamaki store status|sync\n"
        "  tamaki maintenance status|cleanup [--execute]\n"
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
@@ -335,6 +338,52 @@
                     :finance/period (:period observation)})
         0))
     (throw (ex-info "Usage: tamaki finance observe --file ACCOUNTING.edn" {}))))
+
+(defn homeostasis!
+  [{:keys [positional options]}]
+  (case (first positional)
+    "status"
+    (let [latest (->> (events)
+                      (filter #(= :organism/homeostasis-observed
+                                  (:tamaki.event/kind %)))
+                      last)]
+      (print-edn
+       (or (:tamaki.event/data latest)
+           {:homeostasis/status :unobserved
+            :homeostasis/action :configure-private-policy}))
+      0)
+
+    "tick"
+    (let [policy-path (:policy options)
+          observation-path (:file options)]
+      (when (or (str/blank? policy-path) (str/blank? observation-path))
+        (throw
+         (ex-info
+          "homeostasis tick requires --policy POLICY.edn --file OBS.edn"
+          {})))
+      (let [policy (physiology/read-policy policy-path)
+            observation (edn/read-string (slurp (io/file observation-path)))
+            projection (physiology/decide policy observation (now))]
+        (store/append-event! (store/default-root)
+                             (physiology/event projection observation (now)))
+        (print-edn projection)
+        ;; Planning is autonomous; external settlement remains a separate HIL
+        ;; capability and is never performed by this command.
+        0))
+
+    (throw
+     (ex-info
+      "Usage: tamaki homeostasis status|tick --policy POLICY.edn --file OBS.edn"
+      {}))))
+
+(defn store!
+  [{:keys [positional]}]
+  (case (first positional)
+    "status" (do (print-edn (store/readiness)) 0)
+    "sync" (let [result (store/sync-federated! (store/default-root))]
+             (print-edn result)
+             (if (zero? (:replication/failed result)) 0 1))
+    (throw (ex-info "Usage: tamaki store status|sync" {}))))
 
 (defn maintenance!
   [{:keys [positional options]}]
@@ -1099,7 +1148,9 @@
                  (adapters/fleet-command leased (write-work! leased))
                  (adapters/local-command leased))
           _ (emit! leased :run/started {:agent.run/command argv})
-          exit (binding [adapters/*process-env*
+          exit (binding [adapters/*unset-process-env*
+                         (vec (:unset-env runner))
+                         adapters/*process-env*
                          (cond-> (merge
                                   {"KC_LOOP_ID" (:agent.run/id run)
                                    "KC_SESSION" (:agent.run/id run)
@@ -2264,6 +2315,8 @@
       "service" (service! parsed)
       "content" (content! parsed)
       "finance" (finance! parsed)
+      "homeostasis" (homeostasis! parsed)
+      "store" (store! parsed)
       "maintenance" (maintenance! parsed)
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)

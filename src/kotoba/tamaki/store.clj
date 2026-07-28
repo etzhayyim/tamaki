@@ -10,9 +10,10 @@
            [java.time Duration]))
 
 (def event-attr :tamaki.event/blob)
-(def supported-backends #{:file :kotobase :dual})
+(def supported-backends #{:file :kotobase :dual :federated})
 (def ^:private http-client (delay (HttpClient/newHttpClient)))
 (def ^:private local-append-lock (Object.))
+(def ^:private local-read-cache (atom {}))
 
 (def ^:dynamic *http-fn*
   (fn [{:keys [url headers body]}]
@@ -45,6 +46,15 @@
 (defn event-file [root]
   (io/file root "events.edn"))
 
+(defn outbox-dir [root]
+  (io/file root "replication" "outbox"))
+
+(defn- outbox-file [root event]
+  (io/file (outbox-dir root)
+           (str (str/replace (str (:tamaki.event/id event))
+                             #"[^A-Za-z0-9._-]" "_")
+                ".edn")))
+
 (defn ensure-root! [root]
   (.mkdirs (io/file root))
   root)
@@ -54,32 +64,74 @@
   (let [f (event-file root)]
     (if-not (.exists f)
       []
-      (let [content (slurp f)
-            complete-tail? (str/ends-with? content "\n")
-            lines (->> (str/split-lines content)
-                       (remove str/blank?)
-                       vec)]
-        (reduce-kv
-         (fn [events index line]
-           (try
-             (conj events (edn/read-string line))
-             (catch Exception error
-               ;; An interrupted append may leave only the unterminated final
-               ;; EDN line incomplete. Keep committed events, but never hide
-               ;; corruption in a line whose terminating newline was written.
-               (if (and (= index (dec (count lines)))
-                        (not complete-tail?))
-                 events
-                 (throw error)))))
-         []
-         lines)))))
+      (let [path (.getCanonicalPath f)
+            signature [(.length f) (.lastModified f)]
+            cached (get @local-read-cache path)]
+        (if (= signature (:signature cached))
+          (:events cached)
+          (let [content (slurp f)
+                complete-tail? (str/ends-with? content "\n")
+                lines (->> (str/split-lines content)
+                           (remove str/blank?)
+                           vec)
+                parsed
+                (reduce-kv
+                 (fn [events index line]
+                   (try
+                     (conj events (edn/read-string line))
+                     (catch Exception error
+                       ;; An interrupted append may leave only the unterminated
+                       ;; final EDN line incomplete. Keep committed events, but
+                       ;; never hide corruption in a terminated line.
+                       (if (and (= index (dec (count lines)))
+                                (not complete-tail?))
+                         events
+                         (throw error)))))
+                 []
+                 lines)
+                final-signature [(.length f) (.lastModified f)]]
+            ;; Cache only a stable read. A concurrent append causes the next
+            ;; call to retry from the log rather than publishing a stale view.
+            (when (= signature final-signature)
+              (swap! local-read-cache assoc path
+                     {:signature final-signature :events parsed}))
+            parsed))))))
 
 (defn append-local-event!
   [root event]
   (locking local-append-lock
     (ensure-root! root)
-    (spit (event-file root) (str (pr-str event) "\n") :append true))
+    (let [f (event-file root)
+          path (.getCanonicalPath f)
+          before [(.length f) (.lastModified f)]
+          cached (get @local-read-cache path)]
+      (spit f (str (pr-str event) "\n") :append true)
+      (if (= before (:signature cached))
+        (swap! local-read-cache assoc path
+               {:signature [(.length f) (.lastModified f)]
+                :events (conj (:events cached) event)})
+        (swap! local-read-cache dissoc path))))
   event)
+
+(defn append-federated-event!
+  "Commit locally first, then enqueue the same immutable event for Kotobase
+  replication. Network loss cannot stop the organism or erase its local
+  memory; replication debt remains explicit in the outbox."
+  [root event]
+  (append-local-event! root event)
+  (.mkdirs (outbox-dir root))
+  (spit (outbox-file root event) (pr-str event))
+  event)
+
+(defn pending-replication [root]
+  (let [dir (outbox-dir root)]
+    (if-not (.isDirectory dir)
+      []
+      (->> (.listFiles dir)
+           (filter #(and (.isFile %)
+                         (str/ends-with? (.getName %) ".edn")))
+           (sort-by #(.getName %))
+           vec))))
 
 (defn- xrpc!
   [{:keys [url token]} method body]
@@ -137,6 +189,7 @@
     :file (read-local-events root)
     :kotobase (read-kotobase-events (kotobase-config))
     :dual (read-kotobase-events (kotobase-config))
+    :federated (read-local-events root)
     (unsupported-backend! (backend))))
 
 (defn append-event! [root event]
@@ -147,19 +200,64 @@
             ;; Shared state is the commit point. Never leave a local-only fact.
             (append-kotobase-event! (kotobase-config) event)
             (append-local-event! root event))
+    :federated (append-federated-event! root event)
     (unsupported-backend! (backend))))
+
+(defn sync-federated!
+  "Flush locally committed events to Kotobase. Each event has its own outbox
+  file so an interrupted sync preserves the exact remaining debt. Murakumo
+  may independently replicate the sealed local state directory; this function
+  handles the queryable Kotobase projection."
+  [root]
+  (let [config (kotobase-config)
+        pending (pending-replication root)]
+    (if-not (kotobase-ready? config)
+      {:replication/status :deferred
+       :replication/pending (count pending)
+       :replication/succeeded 0
+       :replication/failed (count pending)
+       :replication/reason :kotobase-unconfigured}
+      (let [results
+            (mapv
+             (fn [file]
+               (try
+                 (append-kotobase-event!
+                  config (edn/read-string (slurp file)))
+                 (if (.delete file)
+                   {:ok? true :file (.getName file)}
+                   {:ok? false :file (.getName file)
+                    :error :outbox-delete-failed})
+                 (catch Exception e
+                   {:ok? false :file (.getName file)
+                    :error (.getMessage e)})))
+             pending)
+            succeeded (count (filter :ok? results))]
+        {:replication/status
+         (if (= succeeded (count results)) :synced :degraded)
+         :replication/pending (count pending)
+         :replication/succeeded succeeded
+         :replication/failed (- (count results) succeeded)
+         :replication/results results}))))
 
 (defn readiness []
   (let [kind (backend)
         config (kotobase-config)]
-    {:backend kind
-     :ok? (and (contains? supported-backends kind)
-               (if (contains? #{:kotobase :dual} kind)
-                 (kotobase-ready? config)
-                 true))
-     :error (when-not (contains? supported-backends kind)
-              (str "Unsupported TAMAKI_STORE backend: " (name kind)))
-     :kotobase (when (contains? #{:kotobase :dual} kind)
-                 {:url (:url config) :graph (:graph config)
-                  :token? (not (str/blank? (:token config)))})
-     :local-root (when (contains? #{:file :dual} kind) (default-root))}))
+    (cond->
+     {:backend kind
+      :ok? (and (contains? supported-backends kind)
+                (if (contains? #{:kotobase :dual} kind)
+                  (kotobase-ready? config)
+                  true))
+      :error (when-not (contains? supported-backends kind)
+               (str "Unsupported TAMAKI_STORE backend: " (name kind)))
+      :kotobase (when (contains? #{:kotobase :dual} kind)
+                  {:url (:url config) :graph (:graph config)
+                   :token? (not (str/blank? (:token config)))})
+      :local-root (when (contains? #{:file :dual :federated} kind)
+                    (default-root))}
+      (= :federated kind)
+      (assoc :replication
+             {:mode :local-first
+              :pending (count (pending-replication (default-root)))
+              :kotobase-ready? (kotobase-ready? config)
+              :murakumo-transport :sealed-state-directory}))))

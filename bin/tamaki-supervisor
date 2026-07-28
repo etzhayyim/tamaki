@@ -12,7 +12,10 @@ interval_ms="${TAMAKI_SUPERVISOR_INTERVAL_MS:-}"
 max_failures="${TAMAKI_SUPERVISOR_MAX_FAILURES:-}"
 actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.edn}"
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
+control_actor_interval_seconds="${TAMAKI_CONTROL_ACTOR_RECONCILE_SECONDS:-60}"
 bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
+self_observation_policy="${TAMAKI_HOMEOSTASIS_POLICY:-}"
+self_observation_file="${TAMAKI_HOMEOSTASIS_OBSERVATION:-}"
 self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
 # Optional second continuous loop. Empty by default because merely ensuring a
 # campaign without a resident runner would present inactive work as active.
@@ -68,11 +71,16 @@ else
 fi
 
 actor_pid=""
+control_actor_pid=""
 bridge_pid=""
 cleanup() {
   if [[ -n "$actor_pid" ]] && kill -0 "$actor_pid" 2>/dev/null; then
     kill "$actor_pid" 2>/dev/null || true
     wait "$actor_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$control_actor_pid" ]] && kill -0 "$control_actor_pid" 2>/dev/null; then
+    kill "$control_actor_pid" 2>/dev/null || true
+    wait "$control_actor_pid" 2>/dev/null || true
   fi
   if [[ -n "$bridge_pid" ]] && kill -0 "$bridge_pid" 2>/dev/null; then
     kill "$bridge_pid" 2>/dev/null || true
@@ -87,6 +95,10 @@ trap cleanup EXIT INT TERM
     if [[ -z "${TAMAKI_SUPERVISOR_ACTOR_SPEC:-}" ]]; then
       for discovered_spec in "$tamaki_root"/actors/*.edn; do
         [[ "$discovered_spec" == "$actor_spec" ]] && continue
+        # Sensing and self-regulation have their own bounded lane below. A
+        # long implementation run must never starve these resident actors.
+        [[ "$discovered_spec" == "$tamaki_root/actors/result-evaluator.edn" ]] && continue
+        [[ "$discovered_spec" == "$tamaki_root/actors/loop-gardener.edn" ]] && continue
         grep -q ':actor/id' "$discovered_spec" || continue
         actor_specs+=("$discovered_spec")
       done
@@ -108,8 +120,32 @@ trap cleanup EXIT INT TERM
 actor_pid=$!
 
 (
+  control_specs=(
+    "$tamaki_root/actors/result-evaluator.edn"
+    "$tamaki_root/actors/loop-gardener.edn"
+  )
+  while true; do
+    for control_spec in "${control_specs[@]}"; do
+      [[ -f "$control_spec" ]] || continue
+      bin/tamaki actor reconcile "$control_spec" --execute || true
+    done
+    sleep "$control_actor_interval_seconds"
+  done
+) &
+control_actor_pid=$!
+
+(
   while true; do
     bin/tamaki bridge reconcile --execute || true
+    if [[ "${TAMAKI_STORE:-file}" == "federated" ]]; then
+      bin/tamaki store sync || true
+    fi
+    if [[ -n "$self_observation_policy" && -n "$self_observation_file" &&
+          -f "$self_observation_policy" && -f "$self_observation_file" ]]; then
+      bin/tamaki homeostasis tick \
+        --policy "$self_observation_policy" \
+        --file "$self_observation_file" || true
+    fi
     sleep "$bridge_interval_seconds"
   done
 ) &

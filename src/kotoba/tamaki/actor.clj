@@ -267,6 +267,7 @@
       :runner runner
       :model nil
       :capabilities capabilities
+      :budget (:actor/budget spec)
       :require-done-no-edit? observe-only?
       :parent (str "actor:" (:actor/id spec))
       :actor (:actor/id spec)

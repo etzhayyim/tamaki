@@ -269,3 +269,16 @@ The agent loop also carries these constraints in every cycle goal. It must
 pause when consent or values conflict and cannot acquire resources, reproduce,
 or extend the organism lease. A continuous loop is continuous only inside its
 finite external lease.
+
+## Resource physiology
+
+Tamaki's survival loop is resource homeostasis, not an unconstrained drive for
+self-preservation. It observes availability, inference reserve, storage,
+replication, and treasury runway. It may throttle, rest, compact projections,
+or propose useful work, but it cannot mine, self-mint, spend crypto, purchase
+capacity, or extend its lease.
+
+Use `tamaki homeostasis tick` with private policy and observation files. The
+durable event contains normalized stock/flow quantities but excludes wallet
+addresses, keys, payer identity, prompts, and generated content. See
+[ADR 0006](adr/0006-resource-homeostasis-and-useful-work-economy.md).

@@ -136,7 +136,26 @@
                  [:bb :kotoba-code]))))
 
 (def ^:dynamic *process-env* {})
+(def ^:dynamic *unset-process-env* [])
 (def ^:dynamic *activity-fn* (fn [_] nil))
+
+(defn- process-descendants [process]
+  (with-open [stream (.descendants (.toHandle process))]
+    (vec (iterator-seq (.iterator stream)))))
+
+(defn- stop-process-handles! [handles]
+  (doseq [handle handles
+          :when (.isAlive handle)]
+    (.destroy handle))
+  (Thread/sleep 100)
+  (doseq [handle handles
+          :when (.isAlive handle)]
+    (.destroyForcibly handle)))
+
+(defn- daemon-thread [name f]
+  (doto (Thread. ^Runnable f name)
+    (.setDaemon true)
+    (.start)))
 
 (def ^:dynamic *execute-fn*
   (fn [argv cwd]
@@ -144,13 +163,38 @@
                (.redirectErrorStream true))
           _ (doseq [[key value] *process-env*]
               (.put (.environment pb) key value))
+          _ (doseq [key *unset-process-env*]
+              (.remove (.environment pb) key))
           _ (when cwd (.directory pb (io/file cwd)))
-          p (.start pb)]
-      (with-open [reader (io/reader (.getInputStream p))]
-        (doseq [line (line-seq reader)]
-          (println line)
-          (*activity-fn* line)))
-      (.waitFor p))))
+          p (.start pb)
+          tracking? (atom true)
+          descendants (atom #{})
+          tracker
+          (daemon-thread
+           "tamaki-process-descendants"
+           #(while (and @tracking? (.isAlive p))
+              (swap! descendants into (process-descendants p))
+              (Thread/sleep 100)))
+          output
+          (daemon-thread
+           "tamaki-process-output"
+           #(with-open [reader (io/reader (.getInputStream p))]
+              (doseq [line (line-seq reader)]
+                (println line)
+                (*activity-fn* line))))]
+      (try
+        (let [exit (.waitFor p)]
+          ;; AgentRun subprocesses are bounded cells. Backend grandchildren
+          ;; must not survive a timed-out or failed kotoba-code parent as
+          ;; orphaned token consumers.
+          (reset! tracking? false)
+          (.join tracker 1000)
+          (stop-process-handles! @descendants)
+          (.join output 2000)
+          exit)
+        (finally
+          (reset! tracking? false)
+          (stop-process-handles! @descendants))))))
 
 (defn execute!
   ([argv] (execute! argv nil))

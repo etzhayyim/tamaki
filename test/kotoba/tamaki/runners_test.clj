@@ -6,6 +6,8 @@
   (is (= #{"codex" "claude" "claude-zai" "grok"}
          (set (map :id (runners/profiles)))))
   (is (= "claude-zai:" (:model (runners/profile "claude-zai"))))
+  (is (= #{"ANTHROPIC_API_KEY" "ANTHROPIC_AUTH_TOKEN"}
+         (set (:unset-env (runners/profile "claude-zai")))))
   (is (nil? (:env (runners/safe-profile
                    {:id "account-a" :env {"CLAUDE_CONFIG_DIR" "/secret"}})))))
 

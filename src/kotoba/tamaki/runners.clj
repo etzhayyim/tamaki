@@ -17,7 +17,13 @@
 (defn profiles []
   (let [defaults [{:id "codex" :model "codex:" :kind :codex}
                   {:id "claude" :model "claude:sonnet" :kind :claude}
-                  {:id "claude-zai" :model "claude-zai:" :kind :claude-zai}
+                  ;; The claude.ai subscription session used by claude-zai
+                  ;; must not inherit API authentication from the supervisor.
+                  ;; Claude gives API auth precedence and otherwise disables
+                  ;; the subscription connectors.
+                  {:id "claude-zai" :model "claude-zai:" :kind :claude-zai
+                   :unset-env ["ANTHROPIC_API_KEY"
+                               "ANTHROPIC_AUTH_TOKEN"]}
                   {:id "grok" :model "grok:" :kind :grok}]
         file (io/file (or (System/getenv "TAMAKI_RUNNERS_FILE")
                           (str (System/getProperty "user.home")

@@ -51,6 +51,19 @@
       (is (zero? (adapters/execute! ["true"])))
       (is (= {"KC_LOOP_ID" "run-1"} @observed)))))
 
+(deftest runner-can-remove-inherited-authentication
+  ;; Assert through the child exit code. Never print the inherited environment:
+  ;; a test log is still an exfiltration surface for unrelated credentials.
+  (binding [adapters/*process-env*
+            {"ANTHROPIC_API_KEY" "must-not-reach-runner"
+             "TAMAKI_VISIBLE_TEST" "yes"}
+            adapters/*unset-process-env* ["ANTHROPIC_API_KEY"]]
+    (is
+     (zero?
+      (adapters/execute!
+       ["/bin/sh" "-c"
+        "test -z \"${ANTHROPIC_API_KEY:-}\" && test \"$TAMAKI_VISIBLE_TEST\" = yes"])))))
+
 (deftest shared-contract-namespaces-must-be-on-the-classpath
   ;; Regression for the post-capability-extract failure mode: bb launched with
   ;; only `src:../hil/src` could not require kotoba.core.actor-capability, so

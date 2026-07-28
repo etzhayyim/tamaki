@@ -5,6 +5,7 @@
 
 (def default-window-ms 3600000)
 (def default-global-wip-limit 4)
+(def default-control-wip-limit 2)
 
 (defn failure-category
   "Classify a failed event without treating every failure as an agent-quality
@@ -113,9 +114,14 @@
    (spawn-admission evaluation runs spec default-global-wip-limit))
   ([evaluation runs spec wip-limit]
    (let [capabilities (set (:actor/capabilities spec))
-         active (count (filter #(contains? actor/active-statuses
-                                           (:agent.run/status %))
-                               runs))
+         active-runs (filter #(contains? actor/active-statuses
+                                         (:agent.run/status %))
+                             runs)
+         control-run? #(contains?
+                        (set (:agent.run/required-capabilities %))
+                        :loop-evaluation)
+         control-active (count (filter control-run? active-runs))
+         work-active (count (remove control-run? active-runs))
          recommendations (set (:kaizen/recommendations evaluation))
          observer? (contains? capabilities :loop-evaluation)
          essential-operations?
@@ -132,7 +138,9 @@
                                :redirect-issue-selection
                                :prune-no-change-loop]))
          failure-throttle? (contains? recommendations :throttle-spawn)
-         wip-full? (>= active wip-limit)
+         wip-full? (if observer?
+                     (>= control-active default-control-wip-limit)
+                     (>= work-active wip-limit))
          admitted? (and (not wip-full?)
                         (or observer?
                             essential-operations?
@@ -150,8 +158,11 @@
                   :else :normal)]
      {:admitted? admitted?
       :reason reason
-      :global-active active
+      :global-active (+ work-active control-active)
+      :work-active work-active
+      :control-active control-active
       :global-wip-limit wip-limit
+      :control-wip-limit default-control-wip-limit
       :objective-prefix
       (cond
         (and admitted? essential-operations?)

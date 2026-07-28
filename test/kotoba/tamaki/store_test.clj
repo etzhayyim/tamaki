@@ -41,6 +41,22 @@
                           (store/append-kotobase-event!
                            config {:tamaki.event/id "e1"})))))
 
+(deftest federated-store-commits-locally-and-retries-replication
+  (let [root (.toFile (java.nio.file.Files/createTempDirectory
+                       "tamaki-federated-store"
+                       (make-array java.nio.file.attribute.FileAttribute 0)))
+        event {:tamaki.event/id "e1" :tamaki.event/run "r1"
+               :tamaki.event/at 1}]
+    (store/append-federated-event! root event)
+    (is (= [event] (store/read-local-events root)))
+    (is (= 1 (count (store/pending-replication root))))
+    (with-redefs [store/kotobase-config (constantly config)]
+      (binding [store/*http-fn*
+                (fn [_] {:status 200 :body "{\"ok\":true}"})]
+        (is (= :synced
+               (:replication/status (store/sync-federated! root))))
+        (is (empty? (store/pending-replication root)))))))
+
 (deftest unknown-backend-fails-closed-and-is-observable
   (with-redefs [store/backend (constantly :typo)]
     (is (thrown-with-msg? Exception #"Unsupported TAMAKI_STORE backend: typo"

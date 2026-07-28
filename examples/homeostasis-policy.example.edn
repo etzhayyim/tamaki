@@ -1,0 +1,16 @@
+{:organism/id :tamaki/example
+ :organism/expires-at 2592000000
+ :human-authority-max-age-ms 86400000
+ :homeostasis/targets
+ {:inference-token-reserve 100000
+  :storage-free-bytes 107374182400
+  :durable-replicas 3
+  :treasury-runway-days 30}
+ :economic/policy
+ {:economic/mode :earn-useful-work
+  :unit-of-work :verified-generated-token
+  :internal-settlement :murakumo-credit
+  :external-settlement :x402
+  :allow-mining? false
+  :allow-self-mint? false
+  :auto-settle-crypto? false}}

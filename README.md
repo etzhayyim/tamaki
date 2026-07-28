@@ -142,6 +142,30 @@ tamaki service status --spec projects/.tamaki/tamaki-control/services/example.ed
 tamaki service reconcile --spec projects/.tamaki/tamaki-control/services/example.edn --execute
 ```
 
+### Local-first organism homeostasis
+
+Keep concrete policy and observations in the private local control repository:
+
+```bash
+export TAMAKI_STORE=federated
+export TAMAKI_HOMEOSTASIS_POLICY="$COM_JUNKAWASAKI_ROOT/projects/.tamaki/tamaki-control/homeostasis/policy.edn"
+export TAMAKI_HOMEOSTASIS_OBSERVATION="$COM_JUNKAWASAKI_ROOT/projects/.tamaki/tamaki-control/homeostasis/observation.edn"
+
+bin/tamaki homeostasis tick \
+  --policy "$TAMAKI_HOMEOSTASIS_POLICY" \
+  --file "$TAMAKI_HOMEOSTASIS_OBSERVATION"
+bin/tamaki homeostasis status
+bin/tamaki store status
+bin/tamaki store sync
+```
+
+`federated` is local-first: local events remain authoritative while immutable
+outbox entries wait for Kotobase projection. Murakumo can replicate the sealed
+state directory across local nodes. Generated tokens are metered useful-work
+output; they produce Murakumo credits or x402 revenue only after demand,
+verification, and the applicable HIL settlement gate. Tamaki never mines or
+self-mints crypto.
+
 The deterministic service governor covers observation, incident response,
 support triage, response drafting, human decisions, acquisition, activation,
 conversion, retention, and 7/30-day outcome validation. Generated nodes are

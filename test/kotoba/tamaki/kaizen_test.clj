@@ -119,9 +119,22 @@
            (:reason (kaizen/spawn-admission evaluation runs implementation))))
     (is (false? (:admitted?
                  (kaizen/spawn-admission evaluation runs implementation))))
-    (is (false? (:admitted?
-                 (kaizen/spawn-admission evaluation runs observer))))
+    ;; The organism's sensing/control lane has a separate bounded reserve, so
+    ;; implementation saturation cannot blind its own governor.
+    (is (:admitted? (kaizen/spawn-admission evaluation runs observer)))
     (is (:admitted? (kaizen/spawn-admission evaluation [] observer)))))
+
+(deftest control-lane-is-bounded-separately-from-work
+  (let [evaluation {:kaizen/recommendations []}
+        observer {:actor/capabilities #{:loop-evaluation}}
+        control-run {:agent.run/status :running
+                     :agent.run/required-capabilities #{:loop-evaluation}}]
+    (is (:admitted?
+         (kaizen/spawn-admission evaluation [control-run] observer)))
+    (is (= :global-wip-limit
+           (:reason
+            (kaizen/spawn-admission
+             evaluation [control-run control-run] observer))))))
 
 (deftest review-bottleneck-admits-only-review-capable-work
   (let [evaluation {:kaizen/recommendations
