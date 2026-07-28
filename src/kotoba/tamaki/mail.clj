@@ -10,6 +10,21 @@
 (def send-actions #{:mail/send :mail/reply})
 (def actions (into #{} (concat read-actions compose-actions send-actions)))
 
+(defn- nameable?
+  "True for values safe to pass to `clojure.core/name`. Keywords, strings,
+  and symbols are accepted; other types (numbers, maps, etc.) would throw
+  an opaque ClassCastException inside `command` without this guard."
+  [value]
+  (or (keyword? value) (string? value) (symbol? value)))
+
+(defn- present-ref?
+  "True for a non-blank identity reference. Keywords and symbols are present
+  when they have a non-empty name; strings must also be non-blank. Clojure's
+  truthiness treats \"\" as truthy, so a bare org check alone would let an
+  empty reporting org through, and `(name 123)` would ClassCastException."
+  [value]
+  (and (nameable? value) (not (str/blank? (name value)))))
+
 (defn- sha256 [value]
   (let [digest (.digest (java.security.MessageDigest/getInstance "SHA-256")
                         (.getBytes (str value) "UTF-8"))]
@@ -83,7 +98,11 @@
   (let [verdict (decision request)
         delivery? (contains? send-actions action)
         approved-delivery? (and delivery? (approved? request approval))]
-    (when (or (str/blank? (name (or org "")))
+    ;; Fail closed before any `(name …)` call: a non-nameable org used to
+    ;; ClassCastException instead of the documented validation error, and a
+    ;; blank string org is truthy in Clojure so it must be rejected explicitly.
+    (when (or (not (present-ref? org))
+              (nil? account)
               (str/blank? (str account)))
       (throw (ex-info "Mail command requires org and account reference"
                       {:org org :account account})))

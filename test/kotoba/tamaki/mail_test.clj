@@ -62,3 +62,53 @@
     (is (false? (:mail/executable? (mail/command draft))))
     (is (false? (:mail/executable?
                  (mail/command (assoc draft :approval rejected)))))))
+
+(deftest missing-org-is-rejected
+  ;; The command boundary must fail closed before any transport sees a request
+  ;; without a durable org identity.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:account :support :action :mail/search}))))
+
+(deftest blank-org-is-rejected
+  ;; An empty string is truthy in Clojure, so a bare org check alone would
+  ;; silently accept it; nameable blank strings must still fail closed.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org "" :account :support :action :mail/search})))
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org "   " :account :support :action :mail/search}))))
+
+(deftest missing-or-blank-account-is-rejected
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org :private-example :action :mail/search})))
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org :private-example :account ""
+                      :action :mail/search})))
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org :private-example :account "   "
+                      :action :mail/search}))))
+
+(deftest non-nameable-org-is-rejected-with-a-clear-message
+  ;; A numeric :org passes a bare truthy check but used to crash inside
+  ;; `(name org)` with an opaque ClassCastException. The type guard turns
+  ;; that into the same actionable validation error as a missing org.
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org 123 :account :support :action :mail/search})))
+  (is (thrown-with-msg?
+       clojure.lang.ExceptionInfo
+       #"requires org and account"
+       (mail/command {:org {:id :private} :account :support
+                      :action :mail/search}))))

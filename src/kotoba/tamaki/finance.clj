@@ -17,6 +17,19 @@
   [value]
   (if (string? value) (not (str/blank? value)) (some? value)))
 
+(defn- approx-zero?
+  "True when `delta` is close enough to zero to be floating-point noise from
+  IEEE-754 double currency arithmetic rather than a genuine imbalance.
+  Subtracting ordinary decimal totals such as 1234.56, 987.65, and 246.91
+  almost never lands on exactly 0.0 in double precision, so a bare `zero?`
+  check on the balance-sheet delta rejected real, balanced accounting data.
+  The tolerance is an absolute floor for near-zero totals, plus a term
+  scaled by the magnitude of the inputs and the double ULP, so a genuine
+  discrepancy of a cent or more still fails at any realistic scale."
+  [delta scale]
+  (<= (Math/abs (double delta))
+      (max 1.0e-6 (* (double scale) (Math/ulp 1.0) 8))))
+
 (defn validate-observation [observation]
   (when-not (and (present? (:period observation))
                  (or (:org observation)
@@ -32,11 +45,15 @@
       (throw (ex-info "Finance :owner/:ref must be a keyword, string, or symbol"
                       {:owner-ref owner-ref}))))
   (let [{:keys [assets liabilities equity]} (:bs observation)]
-    (when (and (number? assets) (number? liabilities) (number? equity)
-               (not (zero? (- assets liabilities equity))))
-      (throw (ex-info "Balance sheet does not balance"
-                      {:assets assets :liabilities liabilities :equity equity
-                       :balance-delta (- assets liabilities equity)}))))
+    (when (and (number? assets) (number? liabilities) (number? equity))
+      (let [delta (- assets liabilities equity)
+            scale (max (Math/abs (double assets))
+                       (Math/abs (double liabilities))
+                       (Math/abs (double equity)))]
+        (when-not (approx-zero? delta scale)
+          (throw (ex-info "Balance sheet does not balance"
+                          {:assets assets :liabilities liabilities :equity equity
+                           :balance-delta delta}))))))
   observation)
 
 (defn event [observation now-ms]
