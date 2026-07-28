@@ -137,6 +137,7 @@
      :topology/service (:service/id spec)
      :topology/org (:service/org spec)
      :topology/project (:service/project spec)
+     :topology/file (:service/topology-file spec)
      :topology/generated-at now-ms
      :topology/authority :local-private-edn
      :topology/walk :reverse-topological

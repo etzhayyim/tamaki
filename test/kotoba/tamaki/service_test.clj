@@ -43,6 +43,21 @@
     (is (= :closed (get-in issues [:conversion :issue/status])))
     (is (= :closed (get-in issues [:outcome-validation :issue/status])))))
 
+(deftest topology-carries-its-own-file-reference
+  (let [topology (service/topology
+                  spec {:business/status :unobserved :business/kpis {}} 4)]
+    (is (= (:service/topology-file spec) (:topology/file topology)))))
+
+(deftest event-propagates-the-topology-file-without-external-patching
+  (let [topology (service/topology
+                  spec {:business/status :unobserved :business/kpis {}} 4)
+        emitted (service/event topology 5)]
+    (is (= :service/reconciled (:tamaki.event/kind emitted)))
+    (is (= (:service/topology-file spec)
+           (get-in emitted [:tamaki.event/data :service/topology-file])))
+    (is (= (:service/id spec)
+           (get-in emitted [:tamaki.event/data :service/id])))))
+
 (deftest topology-write-is-readable-and-stable
   (let [dir (.toFile
              (java.nio.file.Files/createTempDirectory

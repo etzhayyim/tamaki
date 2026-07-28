@@ -247,8 +247,6 @@
                      (:service/business-targets spec)
                      (assoc :targets (:service/business-targets spec))))
           topology (service/topology spec summary (now))
-          topology (assoc topology
-                          :topology/file (:service/topology-file spec))
           result {:service/id (:service/id spec)
                   :service/domain (:service/domain spec)
                   :business/status (:business/status summary)
