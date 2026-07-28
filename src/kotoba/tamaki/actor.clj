@@ -3,6 +3,7 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
+            [kotoba.tamaki.capability :as capability]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.visibility :as visibility]))
 
@@ -44,6 +45,8 @@
       (when-not (contains? hil-decisions decision)
         (throw (ex-info "Unknown ActorSpec HIL policy"
                         {:actor/id id :gate gate :decision decision}))))
+    (when-let [execution (:actor/execution spec)]
+      (capability/validate! (:actor/capabilities spec) execution))
     (visibility/validate-actor
      (assoc spec :actor/id id :actor/scale scale :actor/runners runners))))
 

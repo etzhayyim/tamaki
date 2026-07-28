@@ -8,6 +8,7 @@
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.business :as business]
             [kotoba.tamaki.bridge :as bridge]
+            [kotoba.tamaki.capability :as capability]
             [kotoba.tamaki.content :as content]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
@@ -56,6 +57,7 @@
        "  tamaki mail review --file PRIVATE-DRAFT.edn\n"
        "  tamaki voice <transcript> --project PATH [--runner ID --execute]\n"
        "  tamaki actor validate|status|reconcile SPEC.edn [--execute]\n"
+       "  tamaki capability validate|envelope ACTOR.edn\n"
        "  tamaki kpi status [--targets FILE]\n"
        "  tamaki kpi observe --file OBSERVATION.edn [--targets FILE]\n"
        "  tamaki kpi collect --spec COLLECTOR.edn [--targets FILE]\n"
@@ -121,6 +123,33 @@
              :voice? true}))]
       (prn (mail/approval-receipt draft decision :human/operator))
       (if (= :approved decision) 0 1))))
+
+(declare print-edn)
+
+(defn capability!
+  [{:keys [positional]}]
+  (let [[subcommand path] positional]
+    (when-not (and (#{"validate" "envelope"} subcommand) path)
+      (throw
+       (ex-info "Usage: tamaki capability validate|envelope ACTOR.edn" {})))
+    (let [spec (actor/read-spec path)
+          execution (:actor/execution spec)]
+      (when-not execution
+        (throw (ex-info "ActorSpec has no :actor/execution contract"
+                        {:actor/id (:actor/id spec)})))
+      (case subcommand
+        "validate"
+        (do
+          (print-edn
+           (capability/validate!
+            (:actor/capabilities spec) execution))
+          0)
+        "envelope"
+        (do
+          (print-edn
+           (capability/execution-envelope
+            (:actor/id spec) (:actor/capabilities spec) execution))
+          0)))))
 
 (defn parse-args
   "A bare `--` ends option parsing: everything after it is returned verbatim as
@@ -2232,6 +2261,7 @@
       "mail" (mail! parsed)
       "voice" (or (voice! parsed) 0)
       "actor" (actor! parsed)
+      "capability" (capability! parsed)
       "kpi" (kpi! parsed)
       "service" (service! parsed)
       "content" (content! parsed)

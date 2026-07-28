@@ -66,6 +66,43 @@
         (is (.contains (get-in @request [:record-request :impact])
                        "draft-digest"))))))
 
+(deftest capability-cli-emits-a-minimal-kototama-envelope
+  (let [actor-file (java.io.File/createTempFile
+                    "tamaki-kototama-actor-" ".edn")
+        spec
+        {:actor/id :control/heartbeat
+         :actor/project "/tmp/project"
+         :actor/objective "bounded heartbeat"
+         :actor/capabilities #{:organism/heartbeat}
+         :actor/execution
+         {:execution/substrate :kototama-wasm
+          :execution/role :control-guest
+          :execution/realizes #{:organism/heartbeat}
+          :execution/capability-contract
+          {:contract/version 1
+           :abi/namespace "actor:host" :abi/version 0
+           :imports #{:clock-monotonic :sha256-hex :log-write}
+           :grants #{:clock-monotonic :sha256-hex :log-write}
+           :limits {:allow-write-imports? true
+                    :allow-secret-imports? false
+                    :max-http-posts 0 :max-http-fetches 0
+                    :max-llm-infers 0 :allowed-url-prefixes []}
+           :effect-policy {:clock :autonomous :crypto :autonomous
+                           :storage-write :autonomous}}}
+         :actor/hil-policy {:external-effect :approval-required}
+         :actor/scale {:min 0 :desired 0 :max 1}
+         :actor/runners [{:runner :kototama :weight 1}]}]
+    (spit actor-file (pr-str spec))
+    (let [{:keys [exit value]}
+          (call ["capability" "envelope" (.getPath actor-file)])]
+      (is (zero? exit))
+      (is (= 1 (:tamaki.capability/version value)))
+      (is (= ":control/heartbeat" (:tamaki.capability/actor value)))
+      (is (= #{:clock-monotonic :sha256-hex :log-write}
+             (:tamaki.capability/imports value)))
+      (is (nil? (:actor/objective value)))
+      (is (nil? (:actor/capabilities value))))))
+
 (deftest business-feedback-enters-the-actor-decision-context
   (let [spec {:actor/objective "Grow verified value"}
         feedback #:business{:status :observed

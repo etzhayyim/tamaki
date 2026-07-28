@@ -186,6 +186,18 @@ to the existing Murakumo operators. Their remaining arguments pass through
 unchanged, so Tamaki stays one operator entry point without forking those
 projects' command contracts.
 
+Kototama Wasm execution is capability-contract first. Actor business
+capabilities never become host authority implicitly. A Wasm ActorSpec must
+declare the realized subset, exact `actor:host` imports, authority grants,
+bounded limits, and per-effect HIL policy. Tamaki validates before placement;
+Kototama independently validates the minimal envelope before creating
+`HostCaps`. See [ADR 0005](docs/adr/0005-kototama-wasm-capability-contract.md).
+
+```sh
+tamaki capability validate private-actor.edn
+tamaki capability envelope private-actor.edn
+```
+
 ## Sovereign Radicle delivery
 
 Tamaki can own the complete issue-to-canonical loop without a hosted forge:
