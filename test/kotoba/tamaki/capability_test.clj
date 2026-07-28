@@ -46,6 +46,12 @@
              "kotoba-lang/capability-log-write"}
            (set (map :capability/repository
                      (:tamaki.capability/repositories envelope)))))
+    (is (every? string?
+                (map :capability/definition-cid
+                     (:tamaki.capability/repositories envelope))))
+    (is (every? string?
+                (map :capability/hash-contract-cid
+                     (:tamaki.capability/repositories envelope))))
     (is (nil? (:actor/objective envelope)))
     (is (nil? (:actor/capabilities envelope)))))
 
