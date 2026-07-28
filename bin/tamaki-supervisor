@@ -14,6 +14,7 @@ actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.e
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
 control_actor_interval_seconds="${TAMAKI_CONTROL_ACTOR_RECONCILE_SECONDS:-60}"
 bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
+family_spec="${TAMAKI_FAMILY_SPEC:-$tamaki_root/organisms/etzhayyim-family.edn}"
 self_observation_policy="${TAMAKI_HOMEOSTASIS_POLICY:-}"
 self_observation_file="${TAMAKI_HOMEOSTASIS_OBSERVATION:-}"
 replication_config="${TAMAKI_REPLICATION_CONFIG:-}"
@@ -146,6 +147,13 @@ control_actor_pid=$!
 
 (
   while true; do
+    # The public rule is stable; the complete GitHub inventory is changing
+    # environment state. Reconcile it into the ignored local registry so a
+    # newly created or archived Etzhayyim repository promptly becomes an
+    # active or dormant repository-bound AO.
+    if [[ -f "$family_spec" ]]; then
+      bin/tamaki family sync --spec "$family_spec" --execute || true
+    fi
     bin/tamaki bridge reconcile --execute || true
     if [[ "${TAMAKI_STORE:-file}" == "federated" ]]; then
       bin/tamaki store sync || true
