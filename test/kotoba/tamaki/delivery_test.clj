@@ -38,6 +38,21 @@
            (delivery/porcelain-paths
             "R  a.clj -> b.clj\n?? c.clj\n")))))
 
+(deftest nul-porcelain-paths-preserve-exact-adversarial-names
+  (let [nul (char 0)]
+    (testing "spaces, quotes, newlines, and arrow text are not decoded or split"
+      (is (= ["src/a -> b.clj" "quoted \"file\".clj" "line\nbreak.clj"]
+             (delivery/porcelain-paths
+              (str " M src/a -> b.clj" nul
+                   "?? quoted \"file\".clj" nul
+                   "?? line\nbreak.clj" nul)))))
+    (testing "rename and copy records expose both source and destination"
+      (is (= ["src/old -> name.clj" "src/new\nname.clj"
+              "src/original.clj" "src/copy.clj"]
+             (delivery/porcelain-paths
+              (str "R  src/new\nname.clj" nul "src/old -> name.clj" nul
+                   "C  src/copy.clj" nul "src/original.clj" nul)))))))
+
 (deftest process-boundary-is-injectable
   (binding [delivery/*process-fn*
             (fn [argv cwd] {:exit 0 :out (pr-str [argv cwd])})]
@@ -49,7 +64,7 @@
          (delivery/issue-show-command "abc123")))
   (is (= ["rad" "issue" "list" "--open"]
          (delivery/issue-list-command)))
-  (is (= ["git" "status" "--porcelain"]
+  (is (= ["git" "status" "--porcelain=v1" "-z"]
          (delivery/git-status-command)))
   (is (= ["git" "commit" "-m" "Add feature"]
          (delivery/git-commit-command "Add feature")))

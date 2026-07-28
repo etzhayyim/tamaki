@@ -342,7 +342,7 @@
                   store/backend (constantly :file)]
       (binding [delivery/*process-fn*
                 (fn [argv _]
-                  (if (= ["git" "status" "--porcelain"] argv)
+                  (if (= ["git" "status" "--porcelain=v1" "-z"] argv)
                     {:exit 0 :out " M src/owned.clj\n?? secret.txt\n"}
                     {:exit 0 :out ""}))]
         (is (thrown-with-msg?
