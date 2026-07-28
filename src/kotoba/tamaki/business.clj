@@ -16,11 +16,20 @@
    :inbound-support :triaged-support :drafted-replies :approved-replies
    :resolved-support :incidents-opened :incidents-recovered])
 
+;; Period MRR change is the North Star numerator and can contract. Forcing it
+;; non-negative would hide revenue decline from control-signals and issue
+;; prioritization; every other flow remains a non-negative stock transfer.
+(def signed-flow-keys
+  #{:delta-mrr-jpy})
+
 (def rate-keys
   [:activation-rate :paid-conversion-rate :churn-rate :confidence])
 
 (defn non-negative [value]
   (max 0.0 (double (or value 0.0))))
+
+(defn signed-number [value]
+  (double (or value 0.0)))
 
 (defn clamp [value]
   (-> (double (or value 0.0)) (max 0.0) (min 1.0)))
@@ -30,6 +39,11 @@
     (/ (double (or numerator 0)) (double denominator))
     0.0))
 
+(defn normalize-flow-value [key value]
+  (if (contains? signed-flow-keys key)
+    (signed-number value)
+    (non-negative value)))
+
 (defn normalize-observation [observation]
   (-> observation
       (update :period-days #(max 1.0 (non-negative (or % 7))))
@@ -37,7 +51,8 @@
               #(into {} (map (fn [key] [key (non-negative (get % key))])
                              stock-keys)))
       (update :flows
-              #(into {} (map (fn [key] [key (non-negative (get % key))])
+              #(into {} (map (fn [key]
+                               [key (normalize-flow-value key (get % key))])
                              flow-keys)))
       (update :rates
               #(into {}
@@ -58,11 +73,14 @@
    rates))
 
 (defn risk-adjusted-delta-mrr
+  "North Star: signed period ΔMRR * confidence, minus churn risk and costs.
+  Contraction must remain negative so control-signals raise revenue pressure
+  instead of treating decline as a zero-growth plateau."
   [{:keys [flows rates] :as observation}]
   (let [rates (derived-rates observation)
         confidence (clamp (or (:confidence rates) 0.5))
         churn-risk-mrr (non-negative (:churn-risk-mrr-jpy flows))]
-    (- (* (non-negative (:delta-mrr-jpy flows)) confidence)
+    (- (* (signed-number (:delta-mrr-jpy flows)) confidence)
        churn-risk-mrr
        (non-negative (:operational-cost-jpy flows))
        (non-negative (:agent-cost-jpy flows)))))

@@ -110,3 +110,30 @@
            clojure.lang.ExceptionInfo #"must be an EDN map"
            (business/read-targets (.getAbsolutePath file))))
       (finally (.delete file)))))
+
+(deftest negative-delta-mrr-is-preserved-as-revenue-contraction
+  ;; Previously every flow was forced non-negative, so a -50000 JPY MRR
+  ;; contraction became 0 and control-signals only saw residual costs.
+  (let [contracting (business/normalize-observation
+                     (assoc-in observation [:flows :delta-mrr-jpy] -50000))
+        risk-adj (business/risk-adjusted-delta-mrr contracting)
+        events [(business/event contracting 1)]
+        summary (business/summary events targets)
+        signals (business/control-signals summary)]
+    (is (= -50000.0 (get-in contracting [:flows :delta-mrr-jpy])))
+    (testing "non-signed flows still cannot go negative"
+      (is (= 0.0
+             (get-in (business/normalize-observation
+                      (assoc-in observation [:flows :agent-cost-jpy] -9))
+                     [:flows :agent-cost-jpy]))))
+    (is (= -54000.0 risk-adj)
+        "(-50000 * 0.8) - 0 churn-risk - 10000 ops - 4000 agent = -54000")
+    (is (= -54000.0
+           (get-in summary [:business/kpis :risk-adjusted-delta-mrr-jpy])))
+    (is (= :observed (:business/status summary)))
+    (testing "contraction raises revenue pressure rather than looking healthy"
+      (is (= 1.0 (:impact signals)))
+      (is (= 1.0 (:urgency signals)))
+      (is (pos? (:business-pressure signals)))
+      (is (< (get-in summary [:business/progress :risk-adjusted-growth])
+             0.01)))))
