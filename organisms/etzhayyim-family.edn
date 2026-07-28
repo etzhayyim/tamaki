@@ -1,0 +1,13 @@
+{:family/version 1
+ :family/id :tamaki/etzhayyim
+ :family/organization "etzhayyim"
+ :family/representative-repository "tamaki"
+ :family/membership {:rule :all-owned-repositories
+                     :include-archived? true}
+ :family/invariant {:repository-per-ao 1
+                    :ao-per-repository 1}
+ :family/defaults {:ao/family :tamaki/family
+                   :ao/family-name "Tamaki"
+                   :ao/authority :repository-local
+                   :ao/genome :git-history
+                   :ao/memory [:issues :patches :events]}}

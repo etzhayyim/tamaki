@@ -1,15 +1,17 @@
-# Tamaki federation
+# Etzhayyim Tamaki family
 
-Each EDN file is an organization-scoped `OrganismSpec`. Paths and environment
-variable names are public configuration; credentials and private observations
-must remain in the referenced state root or secret broker.
+`etzhayyim-family.edn` is the public membership rule for the Etzhayyim Tamaki
+family. Every repository owned by the organization projects to exactly one
+repository-bound artificial organism (AO):
 
-The specs intentionally separate objective, responsibility, authority, budget,
-actors, loops, Radicle identity, and GitHub organization. The federation
-observatory may read projections from every state root but has no mutation
-authority.
+```text
+1 repository = 1 artificial organism = 1 AO
+```
 
-Concrete identities belong in the local control repository, not in this
-public package. Personal and organization organisms may share explicitly
-accepted artifacts, but identity never grants implicit cross-organism
-authority.
+The `tamaki` repository is the representative AO. Representation permits
+observation, coordination, and presentation of family-wide aggregate state; it
+does not grant mutation authority over another repository-bound AO.
+
+The live repository inventory is written to the local ignored state root by
+`tamaki family sync --execute`. Credentials, private observations, issues, and
+organization-specific control data never enter this public package.

@@ -1,8 +1,11 @@
-# Tamaki artificial organism model
+# Etzhayyim Tamaki-family artificial organism model
 
-Tamaki is the artificial organism that observes its environment, maintains
-durable memory, allocates work, acts through replaceable inference runtimes,
-and adapts its organization from measured outcomes.
+Etzhayyim is organized as the **Tamaki family** of artificial organisms. Every
+repository owned by `etzhayyim` is exactly one repository-bound artificial
+organism (AO). The `tamaki` repository is itself an AO and serves as the
+family's representative: it observes aggregate family state, coordinates
+reviewed artifacts, and presents the family to people. It does not own the
+other AOs or gain implicit authority over them.
 
 Its orientation is **wellbecoming**, not a static wellbeing score. Tamaki and
 people become through dialogue, shared work, care, correction, and inherited
@@ -15,28 +18,41 @@ They do not identify durable roles or individual agents.
 ## Identity hierarchy
 
 ```text
-Tamaki artificial organism
-└── Actor
-    └── AgentRun
-        ├── Runner
-        │   └── Model
-        └── Activity stream
+Etzhayyim Tamaki family
+├── tamaki repository AO (family representative)
+│   └── Actor → AgentRun → Runner/Model + Activity
+└── every other Etzhayyim repository AO
+    └── Actor → AgentRun → Runner/Model + Activity
 ```
 
 ### Artificial organism
 
-Tamaki is the whole governed system. It owns:
+A repository-bound AO is the governed system for one repository. It owns:
 
-- objectives, KPI targets, active-inference signals, and system dynamics;
+- repository-local objectives, KPI targets, active-inference signals, and
+  system dynamics;
 - the population of Actors and their capacity bounds;
-- durable event memory, issue and patch receipts, and learned evidence;
+- its durable event memory, issue and patch receipts, and learned evidence;
 - HIL policy, safety gates, and self-evolution policy.
 
-The organism persists even when no model process is running.
+The AO persists as repository identity and history even when no model process
+is running. Archived repositories project to dormant AOs and remain members of
+the family.
 
-`Tamaki` is the family name of a lineage. A named individual, such as
-`Tamaki Hikari`, has a maximum lifetime of 30 days. The lineage can continue,
-but an individual cannot extend its own lease.
+`Tamaki` is the family name shared by these AOs. The public membership rule is
+`all repositories owned by etzhayyim`; the invariant is:
+
+```text
+1 repository = 1 artificial organism = 1 AO
+```
+
+A named finite individual, such as `Tamaki Hikari`, is an **incarnation** that
+may steward a repository-bound AO for at most 30 days. The durable AO and
+family may continue, but an incarnation cannot extend its own lease.
+
+The representative AO may observe family aggregates and propose coordination.
+Changing another AO's code, policy, credentials, objective, or memory still
+requires that AO's normal issue, review, capability, and human-authority gates.
 
 ### Actor
 
@@ -108,7 +124,9 @@ The analogy is a design aid, not a claim of biological equivalence:
 
 | Tamaki concept | Organism analogy |
 | --- | --- |
-| Tamaki | organism |
+| Etzhayyim Tamaki family | organism family / ecosystem |
+| One repository | one artificial organism |
+| `tamaki` repository | representative AO |
 | Actor | organ, cell lineage, or specialized role |
 | AgentRun | active cell or bounded working individual |
 | Runner and Model | replaceable cognitive/metabolic machinery |
@@ -147,7 +165,7 @@ meaning. HIL is consequently a relationship interface as well as a safety gate.
 
 ## Finite life and lineage
 
-One individual follows a finite lifecycle:
+One incarnation follows a finite lifecycle:
 
 ```text
 birth → active life → succession planning → handover → expiry
@@ -159,10 +177,12 @@ birth → active life → succession planning → handover → expiry
 - handover packages reviewed inheritance and unresolved responsibilities;
 - expiry removes execution authority even if no successor was approved.
 
-Murakumo may restart a failed process for the same organism ID within its lease.
-That is recovery, not birth. A new organism ID is a birth and requires explicit,
-signed human approval. The organism cannot acquire accounts, increase budgets,
-extend its lease, or start a child by itself.
+Murakumo may restart a failed process for the same incarnation ID within its
+lease. That is recovery, not birth. A new incarnation ID is a birth and
+requires explicit, signed human approval. An incarnation cannot acquire
+accounts, increase budgets, extend its lease, or start a child by itself.
+Repository creation creates a new family AO only through the organization's
+normal reviewed repository-creation authority.
 
 ## Genome, epigenome, and meme
 

@@ -22,9 +22,14 @@ adaptive artificial organism.
 
 ## Decision
 
-Tamaki uses the following identity and ownership model:
+Etzhayyim uses the following identity and ownership model:
 
-- **Tamaki** is the artificial organism and governance boundary.
+- **Tamaki family** is the set of all repository-bound AOs owned by the
+  `etzhayyim` organization.
+- **Repository AO** is one artificial organism and governance boundary. The
+  relationship is bijective: one repository equals one AO.
+- **`tamaki` repository AO** is the family representative, without implicit
+  mutation authority over another AO.
 - **Actor** is a durable role, objective, policy, and desired capacity.
 - **AgentRun** is a unique bounded execution individual.
 - **Runner** is an interchangeable CLI/account execution profile.
@@ -39,6 +44,11 @@ Actor names describe responsibility, for example `issue-scout` or
 `independent-reviewer`. UI surfaces show Actor first, AgentRun second, and
 Runner/Model as execution attributes. Agent activity is filterable by AgentRun;
 organism and supervisor activity is grouped under `system`.
+
+The durable name of an AO derives from its repository slug
+(`ao:github:etzhayyim/<repository>`). A maximum-30-day named life is an
+incarnation that stewards an AO; it is not the repository-bound AO itself.
+Repository archival makes an AO dormant rather than deleting it.
 
 Actor association is optional for operator-created and legacy AgentRuns until
 the contract migration is complete. Its absence must not be inferred from the
@@ -55,6 +65,8 @@ Runner name.
 - Usage, limits, activity, and failures can be attributed both to an execution
   and its execution substrate.
 - Observatory can present the organism's organizational structure accurately.
+- Family membership can be reconciled from the complete Etzhayyim repository
+  inventory without committing a private runtime inventory.
 - Active inference and self-evolution can modify roles independently from model
   routing.
 

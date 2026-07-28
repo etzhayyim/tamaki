@@ -1,5 +1,6 @@
 (ns kotoba.tamaki.cli
-  (:require [clojure.edn :as edn]
+  (:require [cheshire.core :as json]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.string :as str]
@@ -13,6 +14,7 @@
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.evolution :as evolution]
             [kotoba.tamaki.finance :as finance]
+            [kotoba.tamaki.family :as family]
             [kotoba.tamaki.loop :as agent-loop]
             [kotoba.tamaki.loop-registry :as loop-registry]
             [kotoba.tamaki.lineage :as lineage]
@@ -75,6 +77,7 @@
        "  tamaki store status|sync\n"
        "  tamaki storage status|reconcile --policy POLICY.edn [--execute]\n"
        "  tamaki maintenance status|cleanup [--execute]\n"
+       "  tamaki family status|sync [--spec FAMILY.edn] [--execute]\n"
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
@@ -201,6 +204,58 @@
 (defn business-targets [options]
   (business/read-targets
    (or (:targets options) (default-business-targets-path))))
+
+(defn family!
+  [{:keys [positional options]}]
+  (let [[action] positional
+        root (store/default-root)
+        spec-path (or (:spec options)
+                      "organisms/etzhayyim-family.edn")]
+    (case action
+      "status"
+      (do
+        (print-edn
+         (if-let [registry (family/read-registry root)]
+           (family/public-summary registry)
+           {:family/status :unobserved
+            :family/spec spec-path}))
+        0)
+
+      "sync"
+      (let [spec (family/read-spec spec-path)
+            organization (:family/organization
+                          (family/validate-spec! spec))
+            result (delivery/execute!
+                    ["gh" "repo" "list" organization
+                     "--limit" "1000"
+                     "--json"
+                     "name,nameWithOwner,url,visibility,isArchived,defaultBranchRef"])
+            _ (delivery/succeeded! result "GitHub family observation")
+            registry (family/projection
+                      spec
+                      (json/parse-string (:out result) true)
+                      (now))]
+        (when (:execute options)
+          (family/write-registry! root registry)
+          (store/append-event!
+           root
+           {:tamaki.event/version 1
+            :tamaki.event/id (str (random-uuid))
+            :tamaki.event/run "family::etzhayyim"
+            :tamaki.event/parent nil
+            :tamaki.event/kind :family/reconciled
+            :tamaki.event/at (now)
+            :tamaki.event/data
+            (family/public-summary registry)}))
+        (print-edn
+         (assoc (family/public-summary registry)
+                :family/executed? (boolean (:execute options))))
+        0)
+
+      (throw
+       (ex-info
+        "Usage: tamaki family status|sync [--spec FAMILY.edn] [--execute]"
+        {})))))
 
 (defn business-summary
   ([] (business-summary {}))
@@ -2417,6 +2472,7 @@
       "store" (store! parsed)
       "storage" (storage! parsed)
       "maintenance" (maintenance! parsed)
+      "family" (family! parsed)
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)

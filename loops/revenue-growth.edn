@@ -9,7 +9,7 @@
  :loop/tags #{:tamaki :revenue :maturity :continuous :supervisor-default}
  :loop/objective
  "discover and resolve the highest-leverage issue that improves maturity, coverage, reliability, documentation, or sustainable revenue"
- :loop/project "orgs/kotoba-lang/tamaki"
+ :loop/project "orgs/etzhayyim/tamaki"
  :loop/workspace-env "COM_JUNKAWASAKI_ROOT"
  :loop/continuous true
  :loop/interval-ms 900000

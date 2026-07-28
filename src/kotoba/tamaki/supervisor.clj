@@ -37,7 +37,7 @@
   [request decision now]
   (let [run (model/agent-run
              {:goal (str "Human consultation: " (:title request))
-              :project "orgs/kotoba-lang/tamaki"
+              :project "orgs/etzhayyim/tamaki"
               :mode :external :runner "tamaki-supervisor"
               :model "human" :capabilities #{}}
              now)
