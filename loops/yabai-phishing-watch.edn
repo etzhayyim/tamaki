@@ -18,8 +18,25 @@
   keep shared-infra ASNs accurate, and prove the murakumo fan-out. Never loosen the
   calibration — 36 benign domains must keep producing zero claims."
  :loop/tags #{:yabai :cti :phishing :coverage :continuous}
+ ;; The loop optimises ONE measured number, not a mood:
+ ;;   bb -cp src -m yabai.methods.maturity   ->  docs/maturity.edn, 0..1000
+ ;; It is deterministic (no clock, no network, no LLM) so two readings are comparable, and
+ ;; it exits non-zero when a calibration floor breaks, so a supervisor can treat regression
+ ;; as failure rather than as a low score. Baseline 231/1000 on 2026-07-28.
+ :loop/fitness {:command "bb -cp src -m yabai.methods.maturity"
+                :artifact "docs/maturity.edn"
+                :key :maturity/score
+                :baseline 231
+                :invalid-when :maturity/valid-false}
  :loop/objective
- "Raise what the CT watch can SEE, not what it claims. In priority order:
+ "Raise the measured maturity score (`bb -cp src -m yabai.methods.maturity`, baseline
+  231/1000 on 2026-07-28) — and read its dimensions before choosing work, because the
+  breakdown already says where the slack is: brand-coverage 0.20, log-coverage 0.167,
+  observation-volume 0.111, infra-breadth 0.317, signal-independence 0.597.
+
+  The score is built so that the cheap exploit fails. Loosening a threshold raises
+  detection counts, breaks a calibration floor and drives the score to ZERO — strictly
+  worse than doing nothing. The cheapest honest way up is coverage. In priority order:
   (1) grow the brand roster beyond the five hand-written entries in phish-infra/default-brands,
       deriving candidates from evidence rather than taste, and re-run the benign/impersonation
       calibration sets after every change;
