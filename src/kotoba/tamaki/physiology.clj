@@ -15,6 +15,31 @@
   #{:publish-offer :accept-payment :spend-crypto :buy-capacity
     :rotate-wallet :change-price})
 
+(defn agent-admission
+  "Translate the latest physiology projection into a new-inference boundary.
+
+  Existing work is not killed. In earn mode, only an explicitly bound
+  useful-work actor may spend inference tokens."
+  [projection actor-spec]
+  (let [status (:homeostasis/status projection)
+        capabilities (set (:actor/capabilities actor-spec))]
+    (cond
+      (nil? projection)
+      {:admitted? true :reason :homeostasis-unobserved}
+
+      (= :work status)
+      {:admitted? true :reason :homeostasis-work}
+
+      (and (= :earn status)
+           (contains? capabilities :useful-work-offer))
+      {:admitted? true :reason :homeostasis-useful-work}
+
+      :else
+      {:admitted? false
+       :reason :homeostasis-throttle
+       :homeostasis/status status
+       :homeostasis/action (:homeostasis/action projection)})))
+
 (defn clamp [n]
   (-> (double (or n 0.0)) (max 0.0) (min 1.0)))
 

@@ -651,7 +651,23 @@
         ;; runs that no ActorSpec-specific reconciliation could reap.
         all-runs (remove nil? (vals (runs)))
         loop-evaluation (kaizen/evaluate (events) all-runs (now))
-        admission (kaizen/spawn-admission loop-evaluation all-runs spec)
+        latest-homeostasis
+        (some->> (events)
+                 (filter #(= :organism/homeostasis-observed
+                             (:tamaki.event/kind %)))
+                 last
+                 :tamaki.event/data
+                 :homeostasis)
+        physiology-admission
+        (physiology/agent-admission latest-homeostasis spec)
+        kaizen-admission
+        (kaizen/spawn-admission loop-evaluation all-runs spec)
+        admission
+        (if (:admitted? physiology-admission)
+          (assoc kaizen-admission :physiology physiology-admission)
+          (assoc physiology-admission
+                 :physiology physiology-admission
+                 :kaizen kaizen-admission))
         spec (cond-> spec
                (:objective-prefix admission)
                (update :actor/objective str "\n"

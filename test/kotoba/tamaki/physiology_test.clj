@@ -73,6 +73,24 @@
            (:homeostasis/status
             (physiology/decide fresh-policy observation 1600))))))
 
+(deftest physiology-controls-new-agent-inference
+  (let [ordinary {:actor/capabilities #{:implementation}}
+        economy {:actor/capabilities #{:implementation :useful-work-offer}}]
+    (is (:admitted?
+         (physiology/agent-admission
+          {:homeostasis/status :work} ordinary)))
+    (is (not (:admitted?
+              (physiology/agent-admission
+               {:homeostasis/status :reclaim-storage
+                :homeostasis/action :compact-derived-projections}
+               ordinary))))
+    (is (not (:admitted?
+              (physiology/agent-admission
+               {:homeostasis/status :earn} ordinary))))
+    (is (:admitted?
+         (physiology/agent-admission
+          {:homeostasis/status :earn} economy)))))
+
 (deftest crypto-mining-and-self-minting-fail-closed
   (is (thrown? Exception
                (physiology/validate-policy
