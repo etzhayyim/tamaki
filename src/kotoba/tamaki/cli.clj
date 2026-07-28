@@ -2485,9 +2485,26 @@
                 paths
                 (ao-fleet/write-loop-specs!
                  root policy (:ao.fleet/selected projection))
-                ensured-campaigns (mapv ensure-fleet-loop! paths)
                 selected-specs
                 (mapv loop-registry/read-spec paths)
+                active-campaigns
+                (->> (vals (campaigns))
+                     (filter #(= :active (:tamaki.loop/status %)))
+                     vec)
+                ;; Fleet reconciliation is frequent while the append-only
+                ;; event stream can be large. Reuse the single campaign fold
+                ;; for already-registered AOs instead of re-reading the whole
+                ;; stream once per selected LoopSpec.
+                ensured-campaigns
+                (mapv
+                 (fn [path spec]
+                   (or (last
+                        (sort-by
+                         :tamaki.loop/updated-at
+                         (filter #(loop-registry/compatible-campaign? spec %)
+                                 active-campaigns)))
+                       (ensure-fleet-loop! path)))
+                 paths selected-specs)
                 selected-ids
                 (set (map #(loop-registry/spec-id-str (:loop/id %))
                           selected-specs))
