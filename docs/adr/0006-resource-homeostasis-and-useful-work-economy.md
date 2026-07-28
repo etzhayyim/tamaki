@@ -61,6 +61,16 @@ replicates the encrypted/sealed state directory across independently powered
 nodes. A healthy production policy requires at least three replicas across at
 least two failure domains; a cloud copy is an optional replica, not authority.
 
+`tamaki memory replicate` implements that disaster-recovery path for the local
+authority log. It takes only newline-committed events, compresses them, encrypts
+them to an age recipient, and copies the sealed blob to declared Murakumo SSH
+targets. A remote copy becomes a durable replica only after its ciphertext
+SHA-256 equals the local sealed blob. Receipts contain hashes, sizes, node IDs,
+and failure domains, but no plaintext, recipient identity, wallet, or key.
+The age secret identity stays outside Git and needs a separately governed vault
+backup; three unreadable copies without recoverable key custody are not useful
+continuity.
+
 Private bodies, keys, prompts, generated content, wallets, and payer identities
 do not enter the public Tamaki repository or homeostasis event. Private policy
 and observations live under `projects/.tamaki/tamaki-control`.

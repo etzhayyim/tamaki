@@ -161,6 +161,21 @@ bin/tamaki store sync
 
 `federated` is local-first: local events remain authoritative while immutable
 outbox entries wait for Kotobase projection. Murakumo can replicate the sealed
+authority log independently:
+
+```bash
+tamaki memory replicate \
+  --config /private/path/replication.edn \
+  --file /private/path/homeostasis-observation.edn
+tamaki memory status
+```
+
+The snapshot is truncated at the last committed newline, compressed, encrypted
+to an age recipient, copied over BatchMode SSH, and counted only after its
+SHA-256 matches on the remote node. The receipt contains node IDs and failure
+domains, never keys or plaintext. The private config must declare at least two
+remote targets; together with the local authority this provides three durable
+copies.
 state directory across local nodes. Generated tokens are metered useful-work
 output; they produce Murakumo credits or x402 revenue only after demand,
 verification, and the applicable HIL settlement gate. Tamaki never mines or

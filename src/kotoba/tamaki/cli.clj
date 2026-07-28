@@ -22,6 +22,7 @@
             [kotoba.tamaki.maintenance :as maintenance]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.physiology :as physiology]
+            [kotoba.tamaki.replication :as replication]
             [kotoba.tamaki.runners :as runners]
             [kotoba.tamaki.result-evaluation :as result-evaluation]
             [kotoba.tamaki.service :as service]
@@ -53,6 +54,7 @@
        "  tamaki integrate <patch-id> --run RUN-ID --issue ID --tests EVIDENCE --approve\n"
        "  tamaki result evaluate|tournament|validate --file FACT.edn\n"
        "  tamaki result status\n"
+       "  tamaki memory status|replicate --config REPLICATION.edn [--file OBS.edn]\n"
        "  tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ...\n"
        "  tamaki consult <summary> [--title TEXT --action TEXT --impact TEXT --silent]\n"
        "  tamaki mail review --file PRIVATE-DRAFT.edn\n"
@@ -390,6 +392,38 @@
              (print-edn result)
              (if (zero? (:replication/failed result)) 0 1))
     (throw (ex-info "Usage: tamaki store status|sync" {}))))
+
+(defn memory!
+  [{:keys [positional options]}]
+  (case (first positional)
+    "status"
+    (do
+      (print-edn
+       (or (replication/latest-receipt (store/default-root))
+           {:replication/status :unobserved
+            :replication/action :configure-private-targets}))
+      0)
+
+    "replicate"
+    (let [config-path (:config options)]
+      (when (str/blank? config-path)
+        (throw
+         (ex-info "memory replicate requires --config REPLICATION.edn" {})))
+      (let [receipt
+            (replication/reconcile!
+             (store/default-root)
+             (replication/read-config config-path)
+             (now))]
+        (when-let [observation-path (:file options)]
+          (replication/update-observation!
+           observation-path (:replication/durable-replicas receipt)))
+        (print-edn receipt)
+        (if (= :degraded (:replication/status receipt)) 1 0)))
+
+    (throw
+     (ex-info
+      "Usage: tamaki memory status|replicate --config REPLICATION.edn [--file OBS.edn]"
+      {}))))
 
 (defn maintenance!
   [{:keys [positional options]}]
@@ -2320,6 +2354,7 @@
       "content" (content! parsed)
       "finance" (finance! parsed)
       "homeostasis" (homeostasis! parsed)
+      "memory" (memory! parsed)
       "store" (store! parsed)
       "maintenance" (maintenance! parsed)
       "topology" (topology! parsed)

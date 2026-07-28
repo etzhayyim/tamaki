@@ -1,0 +1,16 @@
+{:replication/version 1
+ :replication/organism :tamaki
+ ;; Public recipient only. Never place the AGE-SECRET-KEY in this file.
+ :replication/recipient "age1replace-with-operator-recipient"
+ :replication/min-interval-ms 21600000
+ :replication/targets
+ [{:target/id :murakumo/node-a
+   :target/transport :ssh
+   :target/host "operator@node-a"
+   :target/path "~/.local/share/tamaki/replicas"
+   :target/failure-domain :host/node-a}
+  {:target/id :murakumo/node-b
+   :target/transport :ssh
+   :target/host "operator@node-b"
+   :target/path "~/.local/share/tamaki/replicas"
+   :target/failure-domain :host/node-b}]}

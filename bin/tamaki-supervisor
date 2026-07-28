@@ -16,6 +16,7 @@ control_actor_interval_seconds="${TAMAKI_CONTROL_ACTOR_RECONCILE_SECONDS:-60}"
 bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
 self_observation_policy="${TAMAKI_HOMEOSTASIS_POLICY:-}"
 self_observation_file="${TAMAKI_HOMEOSTASIS_OBSERVATION:-}"
+replication_config="${TAMAKI_REPLICATION_CONFIG:-}"
 self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
 # Optional second continuous loop. Empty by default because merely ensuring a
 # campaign without a resident runner would present inactive work as active.
@@ -142,6 +143,11 @@ control_actor_pid=$!
     fi
     if [[ -n "$self_observation_policy" && -n "$self_observation_file" &&
           -f "$self_observation_policy" && -f "$self_observation_file" ]]; then
+      if [[ -n "$replication_config" && -f "$replication_config" ]]; then
+        bin/tamaki memory replicate \
+          --config "$replication_config" \
+          --file "$self_observation_file" || true
+      fi
       bin/tamaki homeostasis tick \
         --policy "$self_observation_policy" \
         --file "$self_observation_file" || true
