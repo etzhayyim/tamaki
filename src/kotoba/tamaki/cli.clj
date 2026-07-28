@@ -362,7 +362,13 @@
           "homeostasis tick requires --policy POLICY.edn --file OBS.edn"
           {})))
       (let [policy (physiology/read-policy policy-path)
-            observation (edn/read-string (slurp (io/file observation-path)))
+            ;; Disk reserve is a local physiological fact, not operator prose.
+            ;; Refresh it on every tick so a stale private observation cannot
+            ;; hide exhaustion or keep the organism throttled after cleanup.
+            observation
+            (assoc (edn/read-string (slurp (io/file observation-path)))
+                   :storage-free-bytes
+                   (.getUsableSpace (io/file (store/default-root))))
             projection (physiology/decide policy observation (now))]
         (store/append-event! (store/default-root)
                              (physiology/event projection observation (now)))

@@ -42,6 +42,11 @@ runway low → offer useful work
 otherwise → normal work
 ```
 
+The CLI refreshes free local storage directly from the state filesystem on
+every tick. Provider limits, replica proofs, treasury balances, and human
+authority still require their own evidence-bearing collectors; unknown values
+remain zero rather than being inferred.
+
 The sensing/control lane has a WIP reserve separate from implementation work.
 This prevents long model runs from starving the evaluator and loop gardener.
 
