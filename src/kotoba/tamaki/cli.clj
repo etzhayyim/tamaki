@@ -74,7 +74,7 @@
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
        "  tamaki content status --id CONTENT-ID\n"
        "  tamaki finance observe --file ACCOUNTING.edn\n"
-       "  tamaki homeostasis status|tick --policy POLICY.edn [--file OBS.edn]\n"
+       "  tamaki homeostasis status|tick|authorize --policy POLICY.edn [--file OBS.edn]\n"
        "  tamaki store status|sync\n"
        "  tamaki storage status|reconcile --policy POLICY.edn [--execute]\n"
        "  tamaki maintenance status|cleanup [--execute]\n"
@@ -440,9 +440,38 @@
         ;; capability and is never performed by this command.
         0))
 
+    "authorize"
+    (let [observation-path (:file options)]
+      (when (str/blank? observation-path)
+        (throw
+         (ex-info
+          "homeostasis authorize requires --file PRIVATE-OBSERVATION.edn"
+          {})))
+      (let [file (io/file observation-path)
+            observation (edn/read-string (slurp file))
+            authorized (physiology/renew-human-authority observation (now))
+            temporary (io/file (.getParentFile file)
+                               (str "." (.getName file) ".tmp"))]
+        ;; The observation stays in the operator's private state tree. Rename
+        ;; after a complete write so a crash cannot leave a partial EDN fact.
+        (spit temporary (str (pr-str authorized) "\n"))
+        (java.nio.file.Files/move
+         (.toPath temporary)
+         (.toPath file)
+         (into-array
+          java.nio.file.CopyOption
+          [java.nio.file.StandardCopyOption/REPLACE_EXISTING
+           java.nio.file.StandardCopyOption/ATOMIC_MOVE]))
+        (print-edn
+         {:homeostasis/authority :renewed
+          :human-authority-valid? true
+          :human-authority-observed-at
+          (:human-authority-observed-at authorized)})
+        0))
+
     (throw
      (ex-info
-      "Usage: tamaki homeostasis status|tick --policy POLICY.edn --file OBS.edn"
+      "Usage: tamaki homeostasis status|tick|authorize --policy POLICY.edn --file OBS.edn"
       {}))))
 
 (defn store!

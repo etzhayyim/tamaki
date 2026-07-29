@@ -75,7 +75,9 @@
 
 (deftest physiology-controls-new-agent-inference
   (let [ordinary {:actor/capabilities #{:implementation}}
-        economy {:actor/capabilities #{:implementation :useful-work-offer}}]
+        economy {:actor/capabilities #{:implementation :useful-work-offer}}
+        control {:actor/capabilities
+                 #{:loop-evaluation :event-observation}}]
     (is (:admitted?
          (physiology/agent-admission
           {:homeostasis/status :work} ordinary)))
@@ -89,7 +91,39 @@
                {:homeostasis/status :earn} ordinary))))
     (is (:admitted?
          (physiology/agent-admission
-          {:homeostasis/status :earn} economy)))))
+          {:homeostasis/status :earn} economy)))
+    (is (= :homeostasis-control-reserve
+           (:reason
+            (physiology/agent-admission
+             {:homeostasis/status :cognitive-rest
+              :homeostasis/action :route-local-small-model}
+             control))))
+    (is (not (:admitted?
+              (physiology/agent-admission
+               {:homeostasis/status :cognitive-rest
+                :homeostasis/action :route-local-small-model}
+               (update control :actor/capabilities conj :implementation)))))
+    (is (not (:admitted?
+              (physiology/agent-admission
+               {:homeostasis/status :paused
+                :homeostasis/action :consult-human}
+               control))))
+    (is (not (:admitted?
+              (physiology/agent-admission
+               {:homeostasis/status :expired
+                :homeostasis/action :terminate}
+               control))))))
+
+(deftest renewing-authority-does-not-invent-resource-stocks
+  (let [before {:inference-token-reserve 0
+                :treasury-runway-days 0
+                :human-authority-valid? false
+                :human-authority-observed-at 100}
+        after (physiology/renew-human-authority before 200)]
+    (is (= 0 (:inference-token-reserve after)))
+    (is (= 0 (:treasury-runway-days after)))
+    (is (true? (:human-authority-valid? after)))
+    (is (= 200 (:human-authority-observed-at after)))))
 
 (deftest storage-pressure-routes-to-the-deterministic-curator
   (let [projection

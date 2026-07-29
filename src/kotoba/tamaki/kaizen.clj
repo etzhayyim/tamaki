@@ -6,6 +6,7 @@
 (def default-window-ms 3600000)
 (def default-global-wip-limit 4)
 (def default-control-wip-limit 2)
+(def minimum-failures-for-global-throttle 2)
 
 (defn failure-category
   "Classify a failed event without treating every failure as an agent-quality
@@ -72,7 +73,12 @@
            (seq evaluation-debt) (conj :evaluate-integrated-results)
            (and (pos? reviews) (zero? integrated))
            (conj :heal-review-integration-bottleneck)
-           (>= failure-pressure 0.5) (conj :throttle-spawn)
+           ;; One transient provider, auth, or repository failure must not
+           ;; deadlock every implementation lane for the whole evaluation
+           ;; window. Repeated failures still trigger the global brake.
+           (and (>= failures minimum-failures-for-global-throttle)
+                (>= failure-pressure 0.5))
+           (conj :throttle-spawn)
            (and (>= started 3) (< start->patch 0.25))
            (conj :redirect-issue-selection)
            (and (zero? patches) (pos? started)) (conj :prune-no-change-loop)

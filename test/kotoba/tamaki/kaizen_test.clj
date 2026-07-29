@@ -67,10 +67,20 @@
 (deftest high-failure-pressure-throttles-spawn
   (let [result (kaizen/evaluate
                 [(event :run/started 900)
-                 (event :run/failed 910)]
+                 (event :run/failed 910)
+                 (event :run/failed 920)]
                 [] 1000 200)]
     (is (= :throttle-spawn (:kaizen/decision result)))
-    (is (= 0.5 (get-in result [:kaizen/evidence :failure-pressure])))))
+    (is (= (/ 2.0 3.0)
+           (get-in result [:kaizen/evidence :failure-pressure])))))
+
+(deftest a-single-transient-failure-does-not-deadlock-the-fleet
+  (let [result (kaizen/evaluate
+                [(event :run/started 900)
+                 (event :run/failed 910)]
+                [] 1000 200)]
+    (is (not-any? #{:throttle-spawn}
+                  (:kaizen/recommendations result)))))
 
 (deftest failure-pressure-keeps-essential-support-and-incident-work-alive
   (let [evaluation {:kaizen/recommendations

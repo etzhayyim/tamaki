@@ -15,6 +15,19 @@
   #{:publish-offer :accept-payment :spend-crypto :buy-capacity
     :rotate-wallet :change-price})
 
+(def control-capabilities
+  "Capabilities which may use the small, bounded control reserve while the
+  organism is conserving resources. These actors observe and evaluate durable
+  outputs; they cannot implement, publish, spend, or extend the lease."
+  #{:loop-evaluation :event-observation})
+
+(def effect-capabilities
+  #{:implementation :git :radicle :github :issue-create :publish
+    :support-reply :email-send :payment :useful-work-offer})
+
+(def control-reserve-statuses
+  #{:preserve-memory :reclaim-storage :cognitive-rest})
+
 (defn agent-admission
   "Translate the latest physiology projection into a new-inference boundary.
 
@@ -22,7 +35,9 @@
   useful-work actor may spend inference tokens."
   [projection actor-spec]
   (let [status (:homeostasis/status projection)
-        capabilities (set (:actor/capabilities actor-spec))]
+        capabilities (set (:actor/capabilities actor-spec))
+        control-actor? (and (every? capabilities control-capabilities)
+                            (not-any? capabilities effect-capabilities))]
     (cond
       (nil? projection)
       {:admitted? true :reason :homeostasis-unobserved}
@@ -34,11 +49,26 @@
            (contains? capabilities :useful-work-offer))
       {:admitted? true :reason :homeostasis-useful-work}
 
+      (and (contains? control-reserve-statuses status)
+           control-actor?)
+      {:admitted? true
+       :reason :homeostasis-control-reserve
+       :homeostasis/status status
+       :homeostasis/action (:homeostasis/action projection)}
+
       :else
       {:admitted? false
        :reason :homeostasis-throttle
        :homeostasis/status status
        :homeostasis/action (:homeostasis/action projection)})))
+
+(defn renew-human-authority
+  "Record an explicit local operator authorization in a private observation.
+  This does not invent provider quota, treasury, storage, or economic facts."
+  [observation now-ms]
+  (assoc observation
+         :human-authority-valid? true
+         :human-authority-observed-at now-ms))
 
 (defn clamp [n]
   (-> (double (or n 0.0)) (max 0.0) (min 1.0)))
