@@ -4,7 +4,20 @@
         {:git/url "https://github.com/kotoba-lang/kotoba-core-contracts.git"
          :git/sha "2e615d17406ef4b6311401167294becceb5af2a1"}
         kotoba-lang/hil {:git/url "https://github.com/kotoba-lang/hil.git"
-         :git/sha "75f5b9ed3ed00161f331f868a224d3a71e5db00e"}}
+         :git/sha "75f5b9ed3ed00161f331f868a224d3a71e5db00e"}
+        ;; The AO model this repo defined and then handed to shared libraries
+        ;; (ADR-0001 / ADR-0002). kotoba.tamaki.model and .lineage are now
+        ;; adapters over these, in the same shape kotoba.tamaki.capability
+        ;; already had over kotoba-core-contracts.
+        io.github.kotoba-lang/ao
+        {:git/url "https://github.com/kotoba-lang/ao.git"
+         :git/sha "188b3062959bebc1254c4d6079112233f0f260b6"}
+        io.github.kotoba-lang/agent
+        {:git/url "https://github.com/kotoba-lang/agent.git"
+         :git/sha "12d100bed062f4461b55266b79b7dc9310a41ea1"}
+        io.github.kotoba-lang/yakuwari
+        {:git/url "https://github.com/kotoba-lang/yakuwari.git"
+         :git/sha "1ae34252208abaeb59d102b10b97c62f838d0288"}}
  :aliases
  {:run {:main-opts ["-m" "kotoba.tamaki.cli"]}
   :test {:extra-paths ["test"]

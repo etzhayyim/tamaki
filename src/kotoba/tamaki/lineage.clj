@@ -1,109 +1,38 @@
 (ns kotoba.tamaki.lineage
-  "Finite organism identity, relational wellbecoming, and governed succession.")
+  "Tamaki adapter for the shared finite-lineage model.
 
-(def day-ms 86400000)
-(def default-lifetime-ms (* 30 day-ms))
+  Finite organism identity, relational wellbecoming and governed succession
+  are owned by `kotoba-lang/ao` (`ao.lineage`). Tamaki supplies only the two
+  values that were always tamaki's rather than the model's: the `Tamaki`
+  family name and this fleet's 30-day maximum lease (ADR-0002).
 
-(def wellbeing-dimensions
-  [:human-agency :relational-trust :inheritable-learning
-   :future-optionality :succession-integrity])
+  Same adapter shape as `kotoba.tamaki.model` and `kotoba.tamaki.capability`."
+  (:require [ao.lineage :as lineage]))
 
-(defn clamp [value]
-  (-> (double (or value 0.0)) (max 0.0) (min 1.0)))
+(def day-ms lineage/day-ms)
+(def default-lifetime-ms lineage/default-max-lifetime-ms)
+(def wellbeing-dimensions lineage/wellbeing-dimensions)
+
+(def family-name
+  "The family this fleet's incarnations are named into. ADR-0001: the durable
+  AO derives its name from its repository slug; this is the incarnation's
+  given family, not the AO's identity."
+  "Tamaki")
+
+(defn clamp [value] (lineage/clamp value))
 
 (defn organism
-  "Create one finite Tamaki individual. Expiry is an immutable lease boundary;
-  callers may request a shorter lifetime but never more than 30 days."
-  [{:keys [id family-name given-name generation parent born-at lifetime-ms]
-    :or {family-name "Tamaki" generation 1}}
-   now-ms]
-  (let [born-at (or born-at now-ms)
-        lifetime-ms (or lifetime-ms default-lifetime-ms)]
-    (when (or (not (pos-int? lifetime-ms))
-              (> lifetime-ms default-lifetime-ms))
-      (throw (ex-info "Organism lifetime must be within 30 days"
-                      {:lifetime-ms lifetime-ms
-                       :maximum-ms default-lifetime-ms})))
-    (when (or (not (string? given-name)) (clojure.string/blank? given-name))
-      (throw (ex-info "Organism requires a given name"
-                      {:field :organism/given-name})))
-    {:organism/version 1
-     :organism/id (or id
-                      (str (clojure.string/lower-case family-name) "-"
-                           (clojure.string/lower-case given-name) "-"
-                           generation))
-     :organism/family-name family-name
-     :organism/given-name given-name
-     :organism/generation generation
-     :organism/parent parent
-     :organism/born-at born-at
-     :organism/expires-at (+ born-at lifetime-ms)
-     :organism/lifetime-ms lifetime-ms}))
+  "Create one finite Tamaki individual, defaulting the family name that the
+  shared library deliberately does not assume."
+  [spec now-ms]
+  (lineage/organism (merge {:family-name family-name} spec)
+                    now-ms default-lifetime-ms))
 
-(defn life-phase [individual now-ms]
-  (let [born (:organism/born-at individual)
-        expires (:organism/expires-at individual)
-        age (- now-ms born)
-        lifetime (- expires born)
-        ratio (if (pos? lifetime) (/ age (double lifetime)) 1.0)]
-    (cond
-      (< now-ms born) :not-born
-      (>= now-ms expires) :expired
-      (< ratio 0.70) :active-life
-      (< ratio 0.90) :succession-planning
-      :else :handover)))
+(defn life-phase [individual now-ms] (lineage/life-phase individual now-ms))
+(defn expired? [individual now-ms] (lineage/expired? individual now-ms))
+(defn lineage-vitality [observation] (lineage/lineage-vitality observation))
+(defn action-gate [opts] (lineage/action-gate opts))
+(defn inheritable-memes [memes] (lineage/inheritable-memes memes))
 
-(defn expired? [individual now-ms]
-  (= :expired (life-phase individual now-ms)))
-
-(defn lineage-vitality
-  "Geometric mean: no dimension can be compensated away by maximizing another.
-  This models relational becoming while keeping agency and consent as boundaries."
-  [observation]
-  (let [values (map #(clamp (get observation % 0.0)) wellbeing-dimensions)]
-    (Math/pow (reduce * values) (/ 1.0 (count wellbeing-dimensions)))))
-
-(defn action-gate
-  "Return the organism-level gate for an action. Relational existence does not
-  erase human boundaries: low agency pauses work and reproduction always needs
-  explicit, signed human consent."
-  [{:keys [individual now-ms wellbecoming action human-consent? consent-signature]}]
-  (cond
-    (expired? individual now-ms) :expired
-    (< (clamp (:human-agency wellbecoming)) 0.5) :repair-relationship
-    (and (= action :reproduce)
-         (not (and human-consent? (seq consent-signature))))
-    :approval-required
-    (< (lineage-vitality wellbecoming) 0.35) :rest-and-repair
-    :else :allowed))
-
-(defn inheritable-memes
-  "Only explicitly inheritable memes with provenance and consent scope cross a
-  generation boundary."
-  [memes]
-  (->> memes
-       (filter #(and (:meme/inheritable? %)
-                     (seq (:meme/provenance %))
-                     (:meme/consent %)))
-       vec))
-
-(defn succession-plan
-  [{:keys [parent child-name now-ms wellbecoming memes
-           human-consent? consent-signature]}]
-  (let [gate (action-gate {:individual parent :now-ms now-ms
-                           :wellbecoming wellbecoming :action :reproduce
-                           :human-consent? human-consent?
-                           :consent-signature consent-signature})]
-    (cond-> {:succession/status (if (= :allowed gate) :approved :blocked)
-             :succession/gate gate
-             :succession/parent (:organism/id parent)
-             :succession/proposed-name child-name
-             :succession/memes (inheritable-memes memes)}
-      (= :allowed gate)
-      (assoc :succession/child
-             (organism {:family-name (:organism/family-name parent)
-                        :given-name child-name
-                        :generation (inc (:organism/generation parent))
-                        :parent (:organism/id parent)}
-                       now-ms)
-             :succession/consent-signature consent-signature))))
+(defn succession-plan [opts]
+  (lineage/succession-plan (assoc opts :max-lifetime-ms default-lifetime-ms)))
