@@ -105,6 +105,7 @@
     (is (zero? (:blocked plan)))
     (is (= 1 (:spawn plan)))
     (is (= :revenue/test (:agent.run/actor run-0)))
+    (is (nil? (:agent.run/yakuwari run-0)))
     (is (= "codex" (:agent.run/runner run-0)))))
 
 (deftest reconcile-plan-selects-safe-scale-down-candidates

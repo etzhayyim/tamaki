@@ -106,6 +106,13 @@ An Actor owns an objective, project scope, desired/minimum/maximum population,
 runner pool, and HIL policy. It reconciles desired capacity into zero or more
 AgentRuns.
 
+In the shared Kotoba vocabulary this layer is `yakuwari` (役割).
+Tamaki keeps the older Actor spelling as a persisted compatibility contract,
+while validation, runner-pool expansion, HIL policy vocabulary, and
+desired-state reconciliation come from `kotoba-lang/yakuwari`. This avoids
+confusing the organizational role with Hewitt Actor IPC or a Murakumo
+deployment actor.
+
 ### AgentRun
 
 An AgentRun is one bounded execution individual created by an Actor or operator.

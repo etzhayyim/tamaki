@@ -5,50 +5,48 @@
             [clojure.string :as str]
             [kotoba.tamaki.capability :as capability]
             [kotoba.tamaki.model :as model]
-            [kotoba.tamaki.visibility :as visibility]))
+            [kotoba.tamaki.visibility :as visibility]
+            [yakuwari.policy :as yakuwari-policy]
+            [yakuwari.reconcile :as yakuwari-reconcile]
+            [yakuwari.spec :as yakuwari-spec]))
 
-(def active-statuses #{:queued :leased :running :checkpointed :held})
-(def hil-decisions #{:autonomous :voice-required :approval-required :blocked})
-(def default-lease-grace-ms 120000)
+(def active-statuses yakuwari-reconcile/active-statuses)
+(def hil-decisions yakuwari-policy/decision-set)
+(def default-lease-grace-ms yakuwari-reconcile/default-lease-grace-ms)
 (def integrated-issue-statuses #{:integrated :closed})
 
 (defn actor-id [value]
-  (cond
-    (keyword? value) value
-    (and (string? value) (not (str/blank? value))) (keyword value)
-    :else (throw (ex-info "ActorSpec requires :actor/id" {:value value}))))
+  (try
+    (yakuwari-spec/yakuwari-id value)
+    (catch Exception _
+      (throw (ex-info "ActorSpec requires :actor/id" {:value value})))))
+
+(defn- as-yakuwari
+  "Translate Tamaki's persisted ActorSpec spelling into the shared durable
+  role contract. Attribute names remain stable at the adapter boundary."
+  [spec]
+  {:yakuwari/id (actor-id (:actor/id spec))
+   :yakuwari/project (:actor/project spec)
+   :yakuwari/objective (:actor/objective spec)
+   :yakuwari/scale (:actor/scale spec)
+   :yakuwari/runners (:actor/runners spec)
+   :yakuwari/policy (:actor/hil-policy spec)
+   :yakuwari/control-pressure (:actor/control-pressure spec)
+   :yakuwari/run-key :agent.run/actor
+   :yakuwari/stale-policy :execution-deadline
+   :yakuwari/pressure-mode :tamaki
+   :yakuwari/lease-grace-ms default-lease-grace-ms})
 
 (defn validate-spec
   [spec]
-  (let [id (actor-id (:actor/id spec))
-        project (:actor/project spec)
-        objective (:actor/objective spec)
-        scale (merge {:min 0 :desired 1 :max 1} (:actor/scale spec))
-        {:keys [min desired max]} scale
-        runners (vec (:actor/runners spec))
-        policy (:actor/hil-policy spec)]
-    (when (or (str/blank? project) (str/blank? (str objective)))
-      (throw (ex-info "ActorSpec requires project and objective"
-                      {:actor/id id})))
-    (when-not (and (integer? min) (integer? desired) (integer? max)
-                   (<= 0 min desired max) (pos? max))
-      (throw (ex-info "ActorSpec scale must satisfy 0 <= min <= desired <= max"
-                      {:actor/id id :actor/scale scale})))
-    (when (empty? runners)
-      (throw (ex-info "ActorSpec requires at least one runner"
-                      {:actor/id id})))
-    (doseq [{:keys [runner weight]} runners]
-      (when (or (str/blank? (name runner)) (not (pos-int? (or weight 1))))
-        (throw (ex-info "Actor runner requires an id and positive weight"
-                        {:actor/id id :runner runner :weight weight}))))
-    (doseq [[gate decision] policy]
-      (when-not (contains? hil-decisions decision)
-        (throw (ex-info "Unknown ActorSpec HIL policy"
-                        {:actor/id id :gate gate :decision decision}))))
+  (let [role (yakuwari-spec/validate! (as-yakuwari spec))
+        normalized (assoc spec
+                          :actor/id (:yakuwari/id role)
+                          :actor/scale (:yakuwari/scale role)
+                          :actor/runners (:yakuwari/runners role))]
     (when-let [execution (:actor/execution spec)]
       (capability/validate! (:actor/capabilities spec) execution))
-    (visibility/validate-actor
-     (assoc spec :actor/id id :actor/scale scale :actor/runners runners))))
+    (visibility/validate-actor normalized)))
 
 (defn read-spec [path]
   (let [file (io/file path)]
@@ -126,61 +124,22 @@
            "its forge projection after validating that evidence."))))
 
 (defn runner-pool [spec]
-  (let [runners (:actor/runners spec)
-        max-weight (apply max (map #(or (:weight %) 1) runners))]
-    ;; Spread the first replicas across providers before consuming additional
-    ;; weight, so desired=2 never means two copies of the same account merely
-    ;; because that provider has the highest weight.
-    (->> (range max-weight)
-         (mapcat (fn [round]
-                   (keep (fn [{:keys [runner weight]}]
-                           (when (< round (or weight 1)) (name runner)))
-                         runners)))
-         vec)))
+  (yakuwari-spec/runner-pool (as-yakuwari spec)))
 
 (defn actor-runs [spec runs]
-  (let [id (:actor/id spec)]
-    (->> runs
-         (filter #(= id (:agent.run/actor %)))
-         (sort-by :agent.run/created-at)
-         vec)))
-
-(defn- scale-up-extra
-  "Extra replicas warranted by declared :scale-up-on pressure."
-  [scale active control-pressure]
-  (let [{:keys [queue-depth blocker-count]} (:scale-up-on scale)
-        queued (count (filter #(= :queued (:agent.run/status %)) active))
-        blocked (count (filter #(= :held (:agent.run/status %)) active))
-        business-threshold (get-in scale [:scale-up-on :business-pressure])]
-    (cond-> 0
-      (and queue-depth (integer? queue-depth) (pos? queue-depth)
-           (>= queued queue-depth))
-      (+ (max 1 (inc (- queued queue-depth))))
-      (and blocker-count (integer? blocker-count) (pos? blocker-count)
-           (>= blocked blocker-count))
-      (+ blocked)
-      (and (number? business-threshold)
-           (>= (double (or control-pressure 0.0))
-               (double business-threshold)))
-      (+ (max 1 (long (Math/ceil
-                       (* 2.0 (double (or control-pressure 0.0))))))))))
+  (->> (yakuwari-reconcile/runs-for (as-yakuwari spec) runs)
+       (sort-by :agent.run/created-at)
+       vec))
 
 (defn stale-run?
   "An active durable state without a heartbeat past its execution deadline is
   a ghost. Activity currently does not fold into AgentRun state, so the run
   deadline plus a bounded grace period is the conservative lease."
   [run now-ms]
-  (when (and now-ms (contains? active-statuses (:agent.run/status run)))
-    (let [updated (or (:agent.run/updated-at run)
-                      (:agent.run/created-at run) 0)
-          deadline (or (get-in run [:agent.run/budget :deadline-ms]) 1200000)]
-      (>= (- now-ms updated) (+ deadline default-lease-grace-ms)))))
-
-(defn- live-active-runs [spec runs now-ms]
-  (->> (actor-runs spec runs)
-       (filter #(contains? active-statuses (:agent.run/status %)))
-       (remove #(stale-run? % now-ms))
-       vec))
+  (yakuwari-reconcile/stale-run?
+   {:yakuwari/stale-policy :execution-deadline
+    :yakuwari/lease-grace-ms default-lease-grace-ms}
+   run now-ms))
 
 (defn effective-desired
   "Baseline :desired raised by live scale-up pressure, clamped to [min, max].
@@ -192,28 +151,8 @@
   - :scale-down-after-ms (honoured by reconcile-plan cancel selection)"
   ([spec runs] (effective-desired spec runs nil))
   ([spec runs now-ms]
-   (let [spec (validate-spec spec)
-         scale (:actor/scale spec)
-         {:keys [min desired] max-capacity :max} scale
-         active (live-active-runs spec runs now-ms)
-         raised (+ desired
-                   (scale-up-extra scale active
-                                   (:actor/control-pressure spec)))]
-     (-> raised (clojure.core/min max-capacity) (clojure.core/max min)))))
-
-(defn- cancel-candidates
-  [active now-ms scale-down-after-ms]
-  (->> active
-       reverse
-       (filter #(contains? #{:queued :held} (:agent.run/status %)))
-       (filter (fn [run]
-                 (or (nil? scale-down-after-ms)
-                     (nil? now-ms)
-                     (let [updated (or (:agent.run/updated-at run)
-                                       (:agent.run/created-at run)
-                                       0)]
-                       (>= (- now-ms updated) scale-down-after-ms)))))
-       vec))
+   (yakuwari-reconcile/effective-desired
+    (as-yakuwari (validate-spec spec)) runs now-ms)))
 
 (defn reconcile-plan
   "Plan spawn/cancel actions to reach effective desired capacity.
@@ -222,27 +161,11 @@
   cancelled after they have been idle (queued/held) long enough."
   ([spec runs] (reconcile-plan spec runs nil))
   ([spec runs now-ms]
-   (let [spec (validate-spec spec)
-         scale (:actor/scale spec)
-         all (actor-runs spec runs)
-         stale (filterv #(stale-run? % now-ms) all)
-         active (live-active-runs spec runs now-ms)
-         desired (effective-desired spec runs now-ms)
-         delta (- desired (count active))
-         cancellable (cancel-candidates active now-ms
-                                        (:scale-down-after-ms scale))]
-     {:actor/id (:actor/id spec)
-      :desired desired
-      :running (count (filter #(contains? #{:leased :running :checkpointed}
-                                          (:agent.run/status %)) active))
-      :queued (count (filter #(= :queued (:agent.run/status %)) active))
-      :blocked (count (filter #(= :held (:agent.run/status %)) active))
-      :spawn (max 0 delta)
-      :reap (mapv :agent.run/id stale)
-      :cancel (if (neg? delta)
-                (mapv :agent.run/id (take (- delta) cancellable))
-                [])
-      :active active})))
+   (let [plan (yakuwari-reconcile/plan
+               (as-yakuwari (validate-spec spec)) runs now-ms)]
+     (-> plan
+         (dissoc :yakuwari/id)
+         (assoc :actor/id (:yakuwari/id plan))))))
 
 (defn replica-run
   [spec replica-index now-ms]

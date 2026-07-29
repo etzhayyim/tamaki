@@ -10,6 +10,12 @@ bounded execution created to perform that role, and `codex`, `claude`, or
 `grok` are replaceable runner profiles rather than Actor names. See
 [Artificial organism model](docs/artificial-organism.md) and
 [ADR-0001](docs/adr/0001-artificial-organism-agent-actor-runner-model.md).
+
+The portable definition sites are `kotoba-lang/ao`, `kotoba-lang/yakuwari`,
+and `kotoba-lang/agent`. Tamaki retains `ActorSpec`, `:actor/*`, and
+`:agent.run/actor` as its persisted compatibility surface; its Actor
+implementation adapts those attributes to a `yakuwari` rather than maintaining
+a second role and reconciliation model.
 Each Tamaki individual has a maximum 30-day external lease. Its continuity is
 the governed transmission of genome, epigenome, and consent-scoped memes to a
 human-approved successor—not indefinite process survival. See
