@@ -67,8 +67,12 @@
 (deftest high-failure-pressure-throttles-spawn
   (let [result (kaizen/evaluate
                 [(event :run/started 900)
-                 (event :run/failed 910)
-                 (event :run/failed 920)]
+                 (assoc (event :run/failed 910)
+                        :tamaki.event/data
+                        {:failure/category :verification-failed})
+                 (assoc (event :run/failed 920)
+                        :tamaki.event/data
+                        {:failure/category :verification-failed})]
                 [] 1000 200)]
     (is (= :throttle-spawn (:kaizen/decision result)))
     (is (= (/ 2.0 3.0)
@@ -79,6 +83,19 @@
                 [(event :run/started 900)
                  (event :run/failed 910)]
                 [] 1000 200)]
+    (is (not-any? #{:throttle-spawn}
+                  (:kaizen/recommendations result)))))
+
+(deftest unknown-and-human-gate-failures-do-not-apply-global-brake
+  (let [result
+        (kaizen/evaluate
+         [(event :run/started 900)
+          (event :run/failed 910)
+          (assoc (event :run/failed 920)
+                 :tamaki.event/data {:reason :approval-required})]
+         [] 1000 200)]
+    (is (= 2 (get-in result [:kaizen/evidence :failures])))
+    (is (zero? (get-in result [:kaizen/evidence :throttle-failures])))
     (is (not-any? #{:throttle-spawn}
                   (:kaizen/recommendations result)))))
 

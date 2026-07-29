@@ -7,6 +7,11 @@
 (def default-global-wip-limit 4)
 (def default-control-wip-limit 2)
 (def minimum-failures-for-global-throttle 2)
+(def throttle-failure-categories
+  "Only evidence-backed operational failures may apply the global brake.
+  Human gates and unknown failures remain visible, but cannot justify
+  stopping unrelated actors."
+  #{:stale :budget :verification :integration})
 
 (defn failure-category
   "Classify a failed event without treating every failure as an agent-quality
@@ -45,6 +50,10 @@
                                recent)
          failures (count failed-events)
          failure-categories (frequencies (map failure-category failed-events))
+         throttle-failures
+         (count (filter #(contains? throttle-failure-categories
+                                    (failure-category %))
+                        failed-events))
          integrated-results
          (set (keep (fn [event]
                       (when (= :patch/integrated
@@ -67,6 +76,8 @@
          patch->review (ratio reviews patches)
          review->integrate (ratio integrated reviews)
          failure-pressure (ratio failures (+ started failures))
+         throttle-pressure
+         (ratio throttle-failures (+ started throttle-failures))
          recommendations
          (cond-> []
            (seq stale) (conj :heal-stale-runs)
@@ -76,8 +87,8 @@
            ;; One transient provider, auth, or repository failure must not
            ;; deadlock every implementation lane for the whole evaluation
            ;; window. Repeated failures still trigger the global brake.
-           (and (>= failures minimum-failures-for-global-throttle)
-                (>= failure-pressure 0.5))
+           (and (>= throttle-failures minimum-failures-for-global-throttle)
+                (>= throttle-pressure 0.5))
            (conj :throttle-spawn)
            (and (>= started 3) (< start->patch 0.25))
            (conj :redirect-issue-selection)
@@ -99,6 +110,8 @@
       {:started started :patches patches :reviews reviews
        :integrated integrated :failures failures
        :failure-categories failure-categories
+       :throttle-failures throttle-failures
+       :throttle-pressure throttle-pressure
        :evaluation-debt (vec (sort evaluation-debt))
        :stale-runs (mapv :agent.run/id stale)
        :start->patch start->patch

@@ -2141,9 +2141,22 @@
           (when (seq (delivery/porcelain-paths (:out status)))
             (throw (ex-info "Cycle requires a clean working tree"
                             {:paths (delivery/porcelain-paths (:out status))})))
-          (let [listed (delivery/succeeded!
-                        (delivery/execute! (delivery/issue-list-command) project)
-                        "cycle issue discovery")
+          (let [listed (delivery/execute!
+                        (delivery/issue-list-command) project)
+                _ (when-not (zero? (:exit listed))
+                    (let [auth-required?
+                          (boolean
+                           (re-find
+                            #"(?i)(not registered|ssh-agent|passphrase|required to read your Radicle key)"
+                            (str (:err listed) "\n" (:out listed))))]
+                      (if auth-required?
+                        (throw
+                         (ex-info
+                          "Radicle authority is not available to this process"
+                          {:loop/deferred? true
+                           :reason :radicle-auth-required}))
+                        (delivery/succeeded! listed
+                                             "cycle issue discovery"))))
                 existing (intelligence/parse-issue-list (:out listed))
                 operational-dynamics
                 (intelligence/dynamics-signals
@@ -2373,9 +2386,14 @@
                           :issue/id issue-id :patch/id patch-id})))))))))
             )
         (catch Exception e
-          (append-loop-event! campaign :loop/cycle-failed
-                              {:loop/cycle cycle :error (.getMessage e)
-                               :error/data (ex-data e)})
+          (let [deferred? (:loop/deferred? (ex-data e))]
+            (append-loop-event!
+             campaign
+             (if deferred? :loop/cycle-deferred :loop/cycle-failed)
+             (cond-> {:loop/cycle cycle
+                      :error (.getMessage e)
+                      :error/data (ex-data e)}
+               deferred? (assoc :reason (:reason (ex-data e))))))
           (throw e))))
     0))
 
