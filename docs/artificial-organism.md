@@ -54,6 +54,19 @@ The representative AO may observe family aggregates and propose coordination.
 Changing another AO's code, policy, credentials, objective, or memory still
 requires that AO's normal issue, review, capability, and human-authority gates.
 
+### Organization workplace
+
+An AO may belong to a workplace such as the Etzhayyim tenant in Cloud Itonami
+without transferring organism identity. The workplace holds a revocable
+assignment, redacted read projections, and a typed-intent channel. The AO keeps
+an external supervisor and retains lifecycle, memory, source, issue, and effect
+authority.
+
+An admitted workplace intent is not an executed action. It enters the normal
+incarnation, capability, authority, homeostasis, HIL, and result-evidence
+gates. See
+[ADR-0007](adr/0007-cloud-itonami-workplace-boundary.md).
+
 ## Family activation and metabolism
 
 Membership does not imply continuous inference. The AO fleet controller treats

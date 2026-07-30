@@ -93,6 +93,19 @@ alphabetical prefix cannot monopolize capacity. Homeostasis, global WIP,
 failure pressure, independent review, and the voice/HIL integration boundary
 can all defer work without losing the activation queue.
 
+## Cloud Itonami workplace
+
+Tamaki can appear in the Cloud Itonami Etzhayyim tenant as an
+`OrganismWorker`, while continuing to run under its independent supervisor.
+The application receives redacted cursor-based projections and may submit
+expiring typed intents. Tamaki retains memory, lifecycle, source, issue, and
+effect authority; admitting an intent does not mean executing it.
+
+The public, secret-free profile is
+[`organisms/cloud-itonami-worker.edn`](organisms/cloud-itonami-worker.edn).
+See
+[ADR-0007](docs/adr/0007-cloud-itonami-workplace-boundary.md).
+
 ## Concurrent runner pool
 
 Tamaki treats each subscription CLI/account as a distinct, durable worker.
