@@ -1,12 +1,14 @@
 (ns kotoba.tamaki.cli-test
   (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.cli :as cli]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store]
-            [kotoba.tamaki.supervisor :as supervisor]))
+            [kotoba.tamaki.supervisor :as supervisor]
+            [kotoba.tamaki.workplace :as workplace]))
 
 (def ready-report
   {:bb {:ok? true}
@@ -25,6 +27,36 @@
 
 (defn event-kinds [root]
   (mapv :tamaki.event/kind (store/read-local-events root)))
+
+(deftest result-evaluator-receives-only-one-targets-bounded-evidence
+  (let [patch "patch-1"
+        context
+        (cli/result-evaluation-target-context
+         {:kaizen/evidence
+          {:evaluation-debt [(str "result/" patch) "result/patch-2"]}}
+         [{:tamaki.event/id "review-1"
+           :tamaki.event/run "run-1"
+           :tamaki.event/kind :review/independent
+           :tamaki.event/at 10
+           :tamaki.event/data
+           {:patch/id patch
+            :review/verdict :accepted
+            :review/evidence ["tests passed"]
+            :private/body "must not enter the prompt"}}
+          {:tamaki.event/id "other"
+           :tamaki.event/kind :patch/integrated
+           :tamaki.event/data {:patch/id "patch-2"}}
+          {:tamaki.event/id "noise"
+           :tamaki.event/kind :agent/activity
+           :tamaki.event/data {:patch/id patch}}])]
+    (is (= "result/patch-1" (:evaluation/result context)))
+    (is (= ["review-1"]
+           (mapv :tamaki.event/id
+                 (:evaluation/evidence-events context))))
+    (is (nil?
+         (get-in context
+                 [:evaluation/evidence-events 0
+                  :tamaki.event/data :private/body])))))
 
 (deftest consultation-speaks-only-at-the-decision-boundary
   (let [requests (atom [])]
@@ -478,3 +510,63 @@
     (is (false? (adapters/ready-for? :external {:tamaki {:ok? true} :event-store {:ok? false}})))
     (testing "and local mode still demands kotoba-code"
       (is (false? (adapters/ready-for? :local {:bb {:ok? true} :kotoba-code {:ok? false}}))))))
+
+(deftest workplace-stop-reaches-the-durable-loop-through-the-cli
+  (let [root (temp-root)
+        assignment-file
+        (java.io.File/createTempFile "tamaki-worker-assignment-" ".edn")
+        project (.getCanonicalPath (java.io.File. "."))
+        now-ms (System/currentTimeMillis)
+        assignment
+        {:ao.worker/schema workplace/schema
+         :ao.worker/id "ao:etzhayyim:tamaki"
+         :ao.worker/kind :artificial-organism
+         :ao.worker/organization "etzhayyim"
+         :ao.worker/subject "did:repository:etzhayyim/tamaki"
+         :ao.worker/repository "etzhayyim/tamaki"
+         :ao.worker/runtime :external-supervisor
+         :ao.worker/status :active
+         :ao.worker/capabilities #{:intent/submit :approval/submit
+                                   :stop/request}
+         :ao.worker/authority {:memory :organism-local
+                               :lifecycle :organism-local
+                               :source :repository-local
+                               :issue :radicle-first}}
+        envelope
+        {:intent/id "intent-cli-stop"
+         :intent/organization "etzhayyim"
+         :intent/worker "ao:etzhayyim:tamaki"
+         :intent/capability :stop/request
+         :intent/issued-by "did:key:operator"
+         :intent/expires-at (+ now-ms 60000)
+         :intent/received-at now-ms
+         :intent/payload-hash "sha256:test"
+         :intent/payload {:type "stop" :summary "Governed stop"}}]
+    (spit assignment-file (pr-str assignment))
+    (.mkdirs (workplace/inbox-directory root))
+    (spit (io/file (workplace/inbox-directory root)
+                   "intent-cli-stop.edn")
+          (pr-str envelope))
+    (with-redefs [store/default-root (constantly root)
+                  store/backend (constantly :file)]
+      (call ["loop" "start"
+             "--project" project
+             "--objective" "test workplace stop"
+             "--continuous"])
+      (let [{:keys [exit value]}
+            (call ["workplace" "reconcile"
+                   "--assignment" (.getPath assignment-file)
+                   "--execute"])
+            receipt
+            (edn/read-string
+             (slurp (io/file (workplace/receipt-directory root)
+                             "intent-cli-stop.edn")))]
+        (is (zero? exit))
+        (is (= 1 (:workplace/observed value)))
+        (is (= :succeeded (:receipt/effect-status receipt)))
+        (is (= :workplace-stop-request
+               (get-in (last (store/read-local-events root))
+                       [:tamaki.event/data :reason])))
+        (is (= :loop/completed
+               (:tamaki.event/kind
+                (last (store/read-local-events root)))))))))

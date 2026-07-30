@@ -34,7 +34,8 @@
             [kotoba.tamaki.telemetry-test]
             [kotoba.tamaki.topology-projection-test]
             [kotoba.tamaki.visual-test]
-            [kotoba.tamaki.visibility-test])
+            [kotoba.tamaki.visibility-test]
+            [kotoba.tamaki.workplace-test])
   (:gen-class))
 
 (defn run [_]
@@ -72,7 +73,8 @@
                                'kotoba.tamaki.telemetry-test
                                'kotoba.tamaki.topology-projection-test
                                'kotoba.tamaki.visual-test
-                               'kotoba.tamaki.visibility-test)]
+                               'kotoba.tamaki.visibility-test
+                               'kotoba.tamaki.workplace-test)]
     (when (pos? (+ (:fail result) (:error result)))
       (throw (ex-info "Tamaki tests failed" result)))
     result))

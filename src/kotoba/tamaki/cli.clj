@@ -34,7 +34,8 @@
             [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.telemetry :as telemetry]
             [kotoba.tamaki.topology-projection :as topology-projection]
-            [kotoba.tamaki.visual :as visual])
+            [kotoba.tamaki.visual :as visual]
+            [kotoba.tamaki.workplace :as workplace])
   (:gen-class))
 
 (defn now [] (System/currentTimeMillis))
@@ -74,7 +75,7 @@
        "  tamaki content collect --spec REACTION-COLLECTOR.edn\n"
        "  tamaki content status --id CONTENT-ID\n"
        "  tamaki finance observe --file ACCOUNTING.edn\n"
-       "  tamaki homeostasis status|tick --policy POLICY.edn [--file OBS.edn]\n"
+       "  tamaki homeostasis status|tick|authorize --policy POLICY.edn [--file OBS.edn]\n"
        "  tamaki store status|sync\n"
        "  tamaki storage status|reconcile --policy POLICY.edn [--execute]\n"
        "  tamaki maintenance status|cleanup [--execute]\n"
@@ -83,6 +84,7 @@
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
+       "  tamaki workplace status|reconcile [--assignment WORKER.edn] [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -440,9 +442,38 @@
         ;; capability and is never performed by this command.
         0))
 
+    "authorize"
+    (let [observation-path (:file options)]
+      (when (str/blank? observation-path)
+        (throw
+         (ex-info
+          "homeostasis authorize requires --file PRIVATE-OBSERVATION.edn"
+          {})))
+      (let [file (io/file observation-path)
+            observation (edn/read-string (slurp file))
+            authorized (physiology/renew-human-authority observation (now))
+            temporary (io/file (.getParentFile file)
+                               (str "." (.getName file) ".tmp"))]
+        ;; The observation stays in the operator's private state tree. Rename
+        ;; after a complete write so a crash cannot leave a partial EDN fact.
+        (spit temporary (str (pr-str authorized) "\n"))
+        (java.nio.file.Files/move
+         (.toPath temporary)
+         (.toPath file)
+         (into-array
+          java.nio.file.CopyOption
+          [java.nio.file.StandardCopyOption/REPLACE_EXISTING
+           java.nio.file.StandardCopyOption/ATOMIC_MOVE]))
+        (print-edn
+         {:homeostasis/authority :renewed
+          :human-authority-valid? true
+          :human-authority-observed-at
+          (:human-authority-observed-at authorized)})
+        0))
+
     (throw
      (ex-info
-      "Usage: tamaki homeostasis status|tick --policy POLICY.edn --file OBS.edn"
+      "Usage: tamaki homeostasis status|tick|authorize --policy POLICY.edn --file OBS.edn"
       {}))))
 
 (defn store!
@@ -739,6 +770,48 @@
             "revenue or invent missing conversions.")
     spec))
 
+(def result-evaluation-evidence-kinds
+  #{:patch/created :review/observed :review/independent
+    :effect/measured :patch/integrated :loop/cycle-integrated})
+
+(defn result-evaluation-target-context
+  "Select one evaluation-debt target and only its bounded durable evidence.
+  The evaluator must not repeatedly scan the complete append-only history."
+  [evaluation event-log]
+  (when-let [result-id
+             (first (get-in evaluation
+                            [:kaizen/evidence :evaluation-debt]))]
+    (let [patch-id (str/replace-first result-id #"^result/" "")
+          evidence
+          (->> event-log
+               (filter
+                #(and
+                  (contains? result-evaluation-evidence-kinds
+                             (:tamaki.event/kind %))
+                  (= patch-id
+                     (get-in % [:tamaki.event/data :patch/id]))))
+               (mapv
+                #(-> (select-keys
+                      %
+                      [:tamaki.event/id :tamaki.event/run
+                       :tamaki.event/kind :tamaki.event/at])
+                     (assoc
+                      :tamaki.event/data
+                      (select-keys
+                       (:tamaki.event/data %)
+                       [:patch/id :commit/id :issue/id
+                        :review/tests :review.run/id
+                        :review/verdict :review/commit
+                        :review/evidence
+                        :integration/approved :issue/state
+                        :integration/branch
+                        :effect/improved? :effect/tests-delta
+                        :effect/failures-delta
+                        :hil/decision])))))]
+      {:evaluation/result result-id
+       :evaluation/patch patch-id
+       :evaluation/evidence-events evidence})))
+
 (defn reconcile-actor!
   [spec execute?]
   (let [initial-runs (remove nil? (vals (runs)))
@@ -752,9 +825,10 @@
         ;; capacity that was actually reclaimed, including legacy non-actor
         ;; runs that no ActorSpec-specific reconciliation could reap.
         all-runs (remove nil? (vals (runs)))
-        loop-evaluation (kaizen/evaluate (events) all-runs (now))
+        event-log (events)
+        loop-evaluation (kaizen/evaluate event-log all-runs (now))
         latest-homeostasis
-        (some->> (events)
+        (some->> event-log
                  (filter #(= :organism/homeostasis-observed
                              (:tamaki.event/kind %)))
                  last
@@ -774,8 +848,22 @@
                (:objective-prefix admission)
                (update :actor/objective str "\n"
                        (:objective-prefix admission)))
+        evaluation-context
+        (when (contains? (set (:actor/capabilities spec))
+                         :result-evaluation)
+          (result-evaluation-target-context loop-evaluation event-log))
+        spec
+        (if evaluation-context
+          (update
+           spec :actor/objective str
+           "\nEvaluate only this supervisor-selected target; do not enumerate "
+           "or scan the complete event store. Missing evidence makes the "
+           "corresponding hard gate false and confidence lower—it must never "
+           "be invented:\n"
+           (pr-str evaluation-context))
+          spec)
         content-id (:actor/content-id spec)
-        feedback (when content-id (content/status (events) content-id))
+        feedback (when content-id (content/status event-log content-id))
         business-feedback
         (when (or (:actor/business-domain spec)
                   (= :tamaki/business-portfolio (:actor/type spec))
@@ -787,7 +875,7 @@
         spec (attach-business-feedback spec business-feedback)
         maintenance-feedback
         (when (contains? (set (:actor/capabilities spec)) :loop-evaluation)
-          (some->> (events)
+          (some->> event-log
                    (filter #(= :maintenance/completed
                                (:tamaki.event/kind %)))
                    last
@@ -806,18 +894,36 @@
                        str
                        "\nLatest deterministic lifecycle maintenance output: "
                        (pr-str
-                        (select-keys
-                         maintenance-feedback
-                         [:maintenance/dispositions
-                          :maintenance/conflicts
-                          :maintenance/preserved-count
-                          :maintenance/evidence-groups
-                          :maintenance/duplicate-evidence
-                          :maintenance/integration-frontier]))
-                       ". Review the integration frontier in order. Judge the "
-                       "source code and tests, integrate one compatible result "
-                       "through the normal review gate, and never delete "
-                       "preserved evidence merely to reduce the count.")
+                        (-> (select-keys
+                             maintenance-feedback
+                             [:maintenance/dispositions
+                              :maintenance/preserved-count
+                              :maintenance/evidence-groups
+                              :maintenance/duplicate-evidence])
+                            (assoc
+                             :maintenance/conflict-count
+                             (count (:maintenance/conflicts
+                                     maintenance-feedback))
+                             :maintenance/integration-frontier-count
+                             (count (:maintenance/integration-frontier
+                                     maintenance-feedback))
+                             :maintenance/integration-frontier
+                             (->> (:maintenance/integration-frontier
+                                   maintenance-feedback)
+                                  (take 3)
+                                  (mapv
+                                   #(select-keys
+                                     %
+                                     [:maintenance/run
+                                      :maintenance/project
+                                      :maintenance/source
+                                      :maintenance/reason
+                                      :maintenance/head
+                                      :maintenance/paths
+                                      :maintenance/duplicates]))))))
+                       ". Use this bounded evidence to evaluate or recommend "
+                       "the next control action. Do not edit, deliver, "
+                       "integrate, or delete preserved evidence.")
                spec)
         topology-sync (reconcile-actor-topology! spec execute?)
         planned (actor-status spec)
@@ -2112,9 +2218,22 @@
           (when (seq (delivery/porcelain-paths (:out status)))
             (throw (ex-info "Cycle requires a clean working tree"
                             {:paths (delivery/porcelain-paths (:out status))})))
-          (let [listed (delivery/succeeded!
-                        (delivery/execute! (delivery/issue-list-command) project)
-                        "cycle issue discovery")
+          (let [listed (delivery/execute!
+                        (delivery/issue-list-command) project)
+                _ (when-not (zero? (:exit listed))
+                    (let [auth-required?
+                          (boolean
+                           (re-find
+                            #"(?i)(not registered|ssh-agent|passphrase|required to read your Radicle key)"
+                            (str (:err listed) "\n" (:out listed))))]
+                      (if auth-required?
+                        (throw
+                         (ex-info
+                          "Radicle authority is not available to this process"
+                          {:loop/deferred? true
+                           :reason :radicle-auth-required}))
+                        (delivery/succeeded! listed
+                                             "cycle issue discovery"))))
                 existing (intelligence/parse-issue-list (:out listed))
                 operational-dynamics
                 (intelligence/dynamics-signals
@@ -2344,9 +2463,14 @@
                           :issue/id issue-id :patch/id patch-id})))))))))
             )
         (catch Exception e
-          (append-loop-event! campaign :loop/cycle-failed
-                              {:loop/cycle cycle :error (.getMessage e)
-                               :error/data (ex-data e)})
+          (let [deferred? (:loop/deferred? (ex-data e))]
+            (append-loop-event!
+             campaign
+             (if deferred? :loop/cycle-deferred :loop/cycle-failed)
+             (cond-> {:loop/cycle cycle
+                      :error (.getMessage e)
+                      :error/data (ex-data e)}
+               deferred? (assoc :reason (:reason (ex-data e))))))
           (throw e))))
     0))
 
@@ -2387,6 +2511,179 @@
       (throw (ex-info
               "Usage: tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ..."
               {})))))
+
+(defn- workplace-assignment [options]
+  (let [path (or (:assignment options)
+                 "organisms/cloud-itonami-worker.edn")
+        file (io/file path)]
+    (when-not (.isFile file)
+      (throw (ex-info "Workplace assignment was not found"
+                      {:type :workplace/assignment-not-found :path path})))
+    (let [assignment (edn/read-string (slurp file))]
+      (when-not (= workplace/schema (:ao.worker/schema assignment))
+        (throw (ex-info "Workplace assignment schema is unsupported"
+                        {:type :workplace/invalid-assignment
+                         :schema (:ao.worker/schema assignment)})))
+      assignment)))
+
+(defn- latest-homeostasis []
+  (some->> (events)
+           (filter #(= :organism/homeostasis-observed
+                       (:tamaki.event/kind %)))
+           last
+           :tamaki.event/data
+           :homeostasis))
+
+(defn- live-workplace-campaign [project now-ms]
+  (->> (vals (campaigns))
+       (filter #(and (= :active (:tamaki.loop/status %))
+                     (= (.getCanonicalPath (io/file project))
+                        (.getCanonicalPath
+                         (io/file (:tamaki.loop/project %))))
+                     (or (nil? (:tamaki.loop/expires-at %))
+                         (< now-ms (:tamaki.loop/expires-at %)))))
+       (sort-by :tamaki.loop/updated-at)
+       last))
+
+(defn- workplace-gate
+  [assignment project envelope]
+  (let [at (now)
+        capability (:intent/capability envelope)
+        campaign (live-workplace-campaign project at)
+        actor-spec
+        {:actor/capabilities
+         (case capability
+           :intent/submit #{:implementation :review}
+           :stop/request #{:event-observation}
+           #{})}
+        physiology (physiology/agent-admission
+                    (latest-homeostasis) actor-spec)]
+    (cond
+      (not (#{:intent/submit :stop/request} capability))
+      {:admitted? false :reason :unsupported-effect-capability}
+
+      (not= :repository-local
+            (get-in assignment [:ao.worker/authority :source]))
+      {:admitted? false :reason :repository-authority-unavailable}
+
+      (and (= :intent/submit capability) (nil? campaign))
+      {:admitted? false :reason :incarnation-lease-unavailable}
+
+      (not (:admitted? physiology))
+      (assoc physiology :admitted? false)
+
+      :else
+      {:admitted? true
+       :incarnation-lease
+       (if campaign
+         {:status :valid
+          :loop/id (:tamaki.loop/id campaign)
+          :expires-at (:tamaki.loop/expires-at campaign)}
+         {:status :control-reserve})
+       :capability :granted
+       :authority :repository-local
+       :homeostasis physiology
+       :hil (if (= :intent/submit capability)
+              :approval-receipt-required
+              :operator-control-intent)})))
+
+(defn- dispatch-workplace-intent!
+  [project envelope]
+  (case (:intent/capability envelope)
+    :intent/submit
+    (let [summary (some-> (get-in envelope [:intent/payload :summary])
+                          str str/trim)]
+      (when (str/blank? summary)
+        (throw (ex-info "Objective intent has no summary"
+                        {:type :workplace/invalid-objective})))
+      (let [run
+            (model/agent-run
+             {:goal
+              (str "Governed workplace objective: " summary
+                   "\nTreat this as one bounded work item. Inspect current "
+                   "repository evidence, use Radicle as the primary issue "
+                   "authority, produce a reviewable source/test result, and "
+                   "stop at any additional external-effect or consent gate.")
+              :project project
+              :mode :local
+              :runner nil
+              :model nil
+              :capabilities #{:git}
+              :parent (:intent/id envelope)}
+             (now))
+            _ (store/append-event!
+               (store/default-root)
+               (model/event run :run/submitted (now) {:run run}))
+            exit (execute-run! run)]
+        (when-not (zero? exit)
+          (throw (ex-info "Workplace AgentRun failed"
+                          {:type :workplace/agent-run-failed
+                           :run-id (:agent.run/id run)
+                           :exit exit})))
+        {:agent.run/id (:agent.run/id run)
+         :agent.run/status :succeeded
+         :intent/id (:intent/id envelope)}))
+
+    :stop/request
+    (let [active (->> (vals (campaigns))
+                      (filter #(= :active (:tamaki.loop/status %)))
+                      (filter #(= (.getCanonicalPath (io/file project))
+                                  (.getCanonicalPath
+                                   (io/file (:tamaki.loop/project %)))))
+                      vec)]
+      (doseq [campaign active]
+        (append-loop-event! campaign :loop/completed
+                            {:reason :workplace-stop-request
+                             :intent/id (:intent/id envelope)}))
+      {:loops/stopped (mapv :tamaki.loop/id active)
+       :intent/id (:intent/id envelope)})
+
+    (throw (ex-info "Unsupported workplace effect"
+                    {:type :workplace/unsupported-effect
+                     :capability (:intent/capability envelope)}))))
+
+(defn workplace!
+  [{:keys [positional options]}]
+  (let [[action] positional
+        root (store/default-root)
+        assignment (workplace-assignment options)
+        project (.getCanonicalPath (io/file "."))
+        pending (workplace/inbox root)]
+    (case action
+      "status"
+      (do
+        (print-edn
+         {:workplace/schema "kotoba.tamaki.workplace-status.v1"
+          :workplace/worker (:ao.worker/id assignment)
+          :workplace/pending
+          (mapv #(select-keys %
+                              [:intent/id :intent/capability
+                               :intent/received-at :intent/expires-at])
+                pending)})
+        0)
+
+      "reconcile"
+      (if-not (:execute options)
+        (do
+          (print-edn
+           {:workplace/schema "kotoba.tamaki.workplace-plan.v1"
+            :workplace/worker (:ao.worker/id assignment)
+            :workplace/observed (count pending)
+            :workplace/dry-run true})
+          0)
+        (do
+          (print-edn
+           (workplace/reconcile!
+            {:state-root root
+             :assignment assignment
+             :gate-fn #(workplace-gate assignment project %)
+             :dispatch-fn #(dispatch-workplace-intent! project %)}))
+          0))
+
+      (throw
+       (ex-info
+        "Usage: tamaki workplace status|reconcile [--assignment WORKER.edn] [--execute]"
+        {})))))
 
 (defn- ensure-fleet-loop! [path]
   (let [spec (loop-registry/read-spec path)
@@ -2663,6 +2960,7 @@
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
+      "workplace" (workplace! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

@@ -10,6 +10,12 @@ bounded execution created to perform that role, and `codex`, `claude`, or
 `grok` are replaceable runner profiles rather than Actor names. See
 [Artificial organism model](docs/artificial-organism.md) and
 [ADR-0001](docs/adr/0001-artificial-organism-agent-actor-runner-model.md).
+
+The portable definition sites are `kotoba-lang/ao`, `kotoba-lang/yakuwari`,
+and `kotoba-lang/agent`. Tamaki retains `ActorSpec`, `:actor/*`, and
+`:agent.run/actor` as its persisted compatibility surface; its Actor
+implementation adapts those attributes to a `yakuwari` rather than maintaining
+a second role and reconciliation model.
 Each Tamaki individual has a maximum 30-day external lease. Its continuity is
 the governed transmission of genome, epigenome, and consent-scoped memes to a
 human-approved successor—not indefinite process survival. See
@@ -92,6 +98,25 @@ Each generated campaign and AgentRun carries the stable repository identity
 alphabetical prefix cannot monopolize capacity. Homeostasis, global WIP,
 failure pressure, independent review, and the voice/HIL integration boundary
 can all defer work without losing the activation queue.
+
+## Cloud Itonami workplace
+
+Tamaki can appear in the Cloud Itonami Etzhayyim tenant as an
+`OrganismWorker`, while continuing to run under its independent supervisor.
+The application receives redacted cursor-based projections and may submit
+expiring typed intents. Tamaki retains memory, lifecycle, source, issue, and
+effect authority; admitting an intent does not mean executing it.
+
+The public, secret-free profile is
+[`organisms/cloud-itonami-worker.edn`](organisms/cloud-itonami-worker.edn).
+See
+[ADR-0007](docs/adr/0007-cloud-itonami-workplace-boundary.md).
+
+`bin/tamaki-supervisor` reconciles the private inbox every two seconds. Inspect
+it without effects using `bin/tamaki workplace status`; a manual deterministic
+tick is `bin/tamaki workplace reconcile --execute`. Objective intents remain
+`not-executed` until a parent-bound approval arrives and all Tamaki-local gates
+pass.
 
 ## Concurrent runner pool
 

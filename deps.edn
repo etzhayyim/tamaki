@@ -17,7 +17,7 @@
          :git/sha "12d100bed062f4461b55266b79b7dc9310a41ea1"}
         io.github.kotoba-lang/yakuwari
         {:git/url "https://github.com/kotoba-lang/yakuwari.git"
-         :git/sha "1ae34252208abaeb59d102b10b97c62f838d0288"}}
+         :git/sha "6d340871419d0ad33d401b7128ed297148930082"}}
  :aliases
  {:run {:main-opts ["-m" "kotoba.tamaki.cli"]}
   :test {:extra-paths ["test"]

@@ -2,7 +2,7 @@
  :actor/type :tamaki/result-evaluator
  :actor/project "."
  :actor/objective
- "Drain evaluation debt without inventing value. Select one integrated result, inspect its typed issue, source, test, review, authority, safety, and consent evidence, and persist a ResultEvaluation EDN fact with `bin/tamaki result evaluate --file ...`. Integration is not measured impact. Unknown production impact remains low confidence and must await an evidence-bearing seven-day or thirty-day validation. Compare alternatives with a tournament only inside the same issue and rubric."
+ "Evaluate exactly the supervisor-selected integrated result using only the bounded evidence supplied in this goal. Do not enumerate or scan the complete event store. Missing evidence makes the corresponding hard gate false and confidence lower; never invent it. Write one ResultEvaluation EDN fact to `.tamaki/result-evaluation.edn`. Persist it through the `run_clojure` tool with `(require '[kotoba.tamaki.cli :as cli]) (cli/result! {:positional [\"evaluate\"] :options {:file \".tamaki/result-evaluation.edn\"}})`. Never use shell for this command. Integration is not measured impact; unknown production impact stays low-confidence and awaits evidence-bearing seven-day or thirty-day validation. Do not edit tracked source. After persistence succeeds and git status is clean, finish with exactly DONE."
  :actor/capabilities #{:loop-evaluation :result-evaluation
                        :event-observation :review-observation}
  :actor/governor :tamaki/human-agency

@@ -43,6 +43,34 @@
     (is (= ["result/p1"]
            (get-in result [:kaizen/evidence :evaluation-debt])))))
 
+(deftest evaluation-debt-gives-evaluator-an-executable-persistence-path
+  (let [evaluation {:kaizen/recommendations
+                    [:evaluate-integrated-results]}
+        admission
+        (kaizen/spawn-admission
+         evaluation []
+         {:actor/capabilities
+          #{:loop-evaluation :result-evaluation
+            :event-observation :review-observation}})]
+    (is (:admitted? admission))
+    (is (re-find #"run_clojure" (:objective-prefix admission)))
+    (is (re-find #"exactly `DONE`" (:objective-prefix admission)))))
+
+(deftest plain-loop-observer-is-not-given-result-persistence-work
+  (let [evaluation {:kaizen/recommendations
+                    [:evaluate-integrated-results]}
+        admission
+        (kaizen/spawn-admission
+         evaluation []
+         {:actor/capabilities
+          #{:loop-evaluation :event-observation
+            :review-observation}})]
+    (is (:admitted? admission))
+    (is (re-find #"Control observation mode"
+                 (:objective-prefix admission)))
+    (is (not (re-find #"run_clojure"
+                      (:objective-prefix admission))))))
+
 (deftest loop-evaluator-replicas-are-observe-only
   (let [run (actor/replica-run
              {:actor/id :tamaki/loop-gardener
@@ -67,10 +95,37 @@
 (deftest high-failure-pressure-throttles-spawn
   (let [result (kaizen/evaluate
                 [(event :run/started 900)
-                 (event :run/failed 910)]
+                 (assoc (event :run/failed 910)
+                        :tamaki.event/data
+                        {:failure/category :verification-failed})
+                 (assoc (event :run/failed 920)
+                        :tamaki.event/data
+                        {:failure/category :verification-failed})]
                 [] 1000 200)]
     (is (= :throttle-spawn (:kaizen/decision result)))
-    (is (= 0.5 (get-in result [:kaizen/evidence :failure-pressure])))))
+    (is (= (/ 2.0 3.0)
+           (get-in result [:kaizen/evidence :failure-pressure])))))
+
+(deftest a-single-transient-failure-does-not-deadlock-the-fleet
+  (let [result (kaizen/evaluate
+                [(event :run/started 900)
+                 (event :run/failed 910)]
+                [] 1000 200)]
+    (is (not-any? #{:throttle-spawn}
+                  (:kaizen/recommendations result)))))
+
+(deftest unknown-and-human-gate-failures-do-not-apply-global-brake
+  (let [result
+        (kaizen/evaluate
+         [(event :run/started 900)
+          (event :run/failed 910)
+          (assoc (event :run/failed 920)
+                 :tamaki.event/data {:reason :approval-required})]
+         [] 1000 200)]
+    (is (= 2 (get-in result [:kaizen/evidence :failures])))
+    (is (zero? (get-in result [:kaizen/evidence :throttle-failures])))
+    (is (not-any? #{:throttle-spawn}
+                  (:kaizen/recommendations result)))))
 
 (deftest failure-pressure-keeps-essential-support-and-incident-work-alive
   (let [evaluation {:kaizen/recommendations

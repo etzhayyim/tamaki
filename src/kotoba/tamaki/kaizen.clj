@@ -6,6 +6,12 @@
 (def default-window-ms 3600000)
 (def default-global-wip-limit 4)
 (def default-control-wip-limit 2)
+(def minimum-failures-for-global-throttle 2)
+(def throttle-failure-categories
+  "Only evidence-backed operational failures may apply the global brake.
+  Human gates and unknown failures remain visible, but cannot justify
+  stopping unrelated actors."
+  #{:stale :budget :verification :integration})
 
 (defn failure-category
   "Classify a failed event without treating every failure as an agent-quality
@@ -44,6 +50,10 @@
                                recent)
          failures (count failed-events)
          failure-categories (frequencies (map failure-category failed-events))
+         throttle-failures
+         (count (filter #(contains? throttle-failure-categories
+                                    (failure-category %))
+                        failed-events))
          integrated-results
          (set (keep (fn [event]
                       (when (= :patch/integrated
@@ -66,13 +76,20 @@
          patch->review (ratio reviews patches)
          review->integrate (ratio integrated reviews)
          failure-pressure (ratio failures (+ started failures))
+         throttle-pressure
+         (ratio throttle-failures (+ started throttle-failures))
          recommendations
          (cond-> []
            (seq stale) (conj :heal-stale-runs)
            (seq evaluation-debt) (conj :evaluate-integrated-results)
            (and (pos? reviews) (zero? integrated))
            (conj :heal-review-integration-bottleneck)
-           (>= failure-pressure 0.5) (conj :throttle-spawn)
+           ;; One transient provider, auth, or repository failure must not
+           ;; deadlock every implementation lane for the whole evaluation
+           ;; window. Repeated failures still trigger the global brake.
+           (and (>= throttle-failures minimum-failures-for-global-throttle)
+                (>= throttle-pressure 0.5))
+           (conj :throttle-spawn)
            (and (>= started 3) (< start->patch 0.25))
            (conj :redirect-issue-selection)
            (and (zero? patches) (pos? started)) (conj :prune-no-change-loop)
@@ -93,6 +110,8 @@
       {:started started :patches patches :reviews reviews
        :integrated integrated :failures failures
        :failure-categories failure-categories
+       :throttle-failures throttle-failures
+       :throttle-pressure throttle-pressure
        :evaluation-debt (vec (sort evaluation-debt))
        :stale-runs (mapv :agent.run/id stale)
        :start->patch start->patch
@@ -124,6 +143,7 @@
          work-active (count (remove control-run? active-runs))
          recommendations (set (:kaizen/recommendations evaluation))
          observer? (contains? capabilities :loop-evaluation)
+         result-evaluator? (contains? capabilities :result-evaluation)
          essential-operations?
          (boolean (some capabilities #{:support-routing :incident-response}))
          review-capable? (or (contains? capabilities :result-evaluation)
@@ -167,6 +187,12 @@
       (cond
         (and admitted? essential-operations?)
         "Essential operations mode: work only on a runnable incident or support node from the declared private topology. Preserve evidence, draft safely, and stop at every human or external-effect gate. Do not start acquisition work while failure pressure is elevated.\n"
+
+        (and admitted? evaluation-drain? result-evaluator?)
+        "Priority result-evaluation mode: evaluate exactly one existing integrated result. Write the evidence-bearing EDN fact to `.tamaki/result-evaluation.edn`, then use the `run_clojure` tool with `(require '[kotoba.tamaki.cli :as cli]) (cli/result! {:positional [\"evaluate\"] :options {:file \".tamaki/result-evaluation.edn\"}})` so the canonical private event store records it. Do not edit tracked source. After the command succeeds and `git_status` is clean, finish with exactly `DONE` and no other final text.\n"
+
+        (and admitted? observer?)
+        "Control observation mode: inspect durable outputs and recommend the next bounded action without editing files or invoking delivery. Finish with exactly `DONE` and no other final text.\n"
 
         (and admitted? drain-review? review-capable?)
         (if evaluation-drain?

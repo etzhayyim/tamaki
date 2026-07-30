@@ -14,6 +14,8 @@ actor_spec="${TAMAKI_SUPERVISOR_ACTOR_SPEC:-$tamaki_root/actors/revenue-growth.e
 actor_interval_seconds="${TAMAKI_ACTOR_RECONCILE_SECONDS:-60}"
 control_actor_interval_seconds="${TAMAKI_CONTROL_ACTOR_RECONCILE_SECONDS:-60}"
 bridge_interval_seconds="${TAMAKI_BRIDGE_RECONCILE_SECONDS:-300}"
+workplace_interval_seconds="${TAMAKI_WORKPLACE_RECONCILE_SECONDS:-2}"
+workplace_assignment="${TAMAKI_WORKPLACE_ASSIGNMENT:-$tamaki_root/organisms/cloud-itonami-worker.edn}"
 family_spec="${TAMAKI_FAMILY_SPEC:-$tamaki_root/organisms/etzhayyim-family.edn}"
 fleet_policy="${TAMAKI_AO_FLEET_POLICY:-$tamaki_root/organisms/etzhayyim-fleet.edn}"
 fleet_interval_seconds="${TAMAKI_AO_FLEET_RECONCILE_SECONDS:-900}"
@@ -80,6 +82,7 @@ fi
 actor_pid=""
 control_actor_pid=""
 bridge_pid=""
+workplace_pid=""
 storage_pid=""
 fleet_pid=""
 cleanup() {
@@ -94,6 +97,10 @@ cleanup() {
   if [[ -n "$bridge_pid" ]] && kill -0 "$bridge_pid" 2>/dev/null; then
     kill "$bridge_pid" 2>/dev/null || true
     wait "$bridge_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$workplace_pid" ]] && kill -0 "$workplace_pid" 2>/dev/null; then
+    kill "$workplace_pid" 2>/dev/null || true
+    wait "$workplace_pid" 2>/dev/null || true
   fi
   if [[ -n "$storage_pid" ]] && kill -0 "$storage_pid" 2>/dev/null; then
     kill "$storage_pid" 2>/dev/null || true
@@ -180,6 +187,21 @@ control_actor_pid=$!
   done
 ) &
 bridge_pid=$!
+
+(
+  while true; do
+    if [[ -f "$workplace_assignment" ]]; then
+      # Full bodies remain in the ignored private state directory. The
+      # reconciler applies Tamaki-local gates and writes only effect receipts
+      # for the Cloud workplace observer.
+      bin/tamaki workplace reconcile \
+        --assignment "$workplace_assignment" \
+        --execute || true
+    fi
+    sleep "$workplace_interval_seconds"
+  done
+) &
+workplace_pid=$!
 
 (
   while true; do
