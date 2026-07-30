@@ -855,12 +855,16 @@
                                   (mapv
                                    #(select-keys
                                      %
-                                     [:run :project :source :reason
-                                      :head :paths :duplicates]))))))
-                       ". Review the integration frontier in order. Judge the "
-                       "source code and tests, integrate one compatible result "
-                       "through the normal review gate, and never delete "
-                       "preserved evidence merely to reduce the count.")
+                                     [:maintenance/run
+                                      :maintenance/project
+                                      :maintenance/source
+                                      :maintenance/reason
+                                      :maintenance/head
+                                      :maintenance/paths
+                                      :maintenance/duplicates]))))))
+                       ". Use this bounded evidence to evaluate or recommend "
+                       "the next control action. Do not edit, deliver, "
+                       "integrate, or delete preserved evidence.")
                spec)
         topology-sync (reconcile-actor-topology! spec execute?)
         planned (actor-status spec)
