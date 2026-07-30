@@ -835,14 +835,28 @@
                        str
                        "\nLatest deterministic lifecycle maintenance output: "
                        (pr-str
-                        (select-keys
-                         maintenance-feedback
-                         [:maintenance/dispositions
-                          :maintenance/conflicts
-                          :maintenance/preserved-count
-                          :maintenance/evidence-groups
-                          :maintenance/duplicate-evidence
-                          :maintenance/integration-frontier]))
+                        (-> (select-keys
+                             maintenance-feedback
+                             [:maintenance/dispositions
+                              :maintenance/preserved-count
+                              :maintenance/evidence-groups
+                              :maintenance/duplicate-evidence])
+                            (assoc
+                             :maintenance/conflict-count
+                             (count (:maintenance/conflicts
+                                     maintenance-feedback))
+                             :maintenance/integration-frontier-count
+                             (count (:maintenance/integration-frontier
+                                     maintenance-feedback))
+                             :maintenance/integration-frontier
+                             (->> (:maintenance/integration-frontier
+                                   maintenance-feedback)
+                                  (take 3)
+                                  (mapv
+                                   #(select-keys
+                                     %
+                                     [:run :project :source :reason
+                                      :head :paths :duplicates]))))))
                        ". Review the integration frontier in order. Judge the "
                        "source code and tests, integrate one compatible result "
                        "through the normal review gate, and never delete "

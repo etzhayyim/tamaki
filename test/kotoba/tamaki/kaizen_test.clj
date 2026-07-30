@@ -43,6 +43,34 @@
     (is (= ["result/p1"]
            (get-in result [:kaizen/evidence :evaluation-debt])))))
 
+(deftest evaluation-debt-gives-evaluator-an-executable-persistence-path
+  (let [evaluation {:kaizen/recommendations
+                    [:evaluate-integrated-results]}
+        admission
+        (kaizen/spawn-admission
+         evaluation []
+         {:actor/capabilities
+          #{:loop-evaluation :result-evaluation
+            :event-observation :review-observation}})]
+    (is (:admitted? admission))
+    (is (re-find #"run_clojure" (:objective-prefix admission)))
+    (is (re-find #"exactly `DONE`" (:objective-prefix admission)))))
+
+(deftest plain-loop-observer-is-not-given-result-persistence-work
+  (let [evaluation {:kaizen/recommendations
+                    [:evaluate-integrated-results]}
+        admission
+        (kaizen/spawn-admission
+         evaluation []
+         {:actor/capabilities
+          #{:loop-evaluation :event-observation
+            :review-observation}})]
+    (is (:admitted? admission))
+    (is (re-find #"Control observation mode"
+                 (:objective-prefix admission)))
+    (is (not (re-find #"run_clojure"
+                      (:objective-prefix admission))))))
+
 (deftest loop-evaluator-replicas-are-observe-only
   (let [run (actor/replica-run
              {:actor/id :tamaki/loop-gardener
