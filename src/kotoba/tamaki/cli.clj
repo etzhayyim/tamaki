@@ -768,6 +768,48 @@
             "revenue or invent missing conversions.")
     spec))
 
+(def result-evaluation-evidence-kinds
+  #{:patch/created :review/observed :review/independent
+    :effect/measured :patch/integrated :loop/cycle-integrated})
+
+(defn result-evaluation-target-context
+  "Select one evaluation-debt target and only its bounded durable evidence.
+  The evaluator must not repeatedly scan the complete append-only history."
+  [evaluation event-log]
+  (when-let [result-id
+             (first (get-in evaluation
+                            [:kaizen/evidence :evaluation-debt]))]
+    (let [patch-id (str/replace-first result-id #"^result/" "")
+          evidence
+          (->> event-log
+               (filter
+                #(and
+                  (contains? result-evaluation-evidence-kinds
+                             (:tamaki.event/kind %))
+                  (= patch-id
+                     (get-in % [:tamaki.event/data :patch/id]))))
+               (mapv
+                #(-> (select-keys
+                      %
+                      [:tamaki.event/id :tamaki.event/run
+                       :tamaki.event/kind :tamaki.event/at])
+                     (assoc
+                      :tamaki.event/data
+                      (select-keys
+                       (:tamaki.event/data %)
+                       [:patch/id :commit/id :issue/id
+                        :review/tests :review.run/id
+                        :review/verdict :review/commit
+                        :review/evidence
+                        :integration/approved :issue/state
+                        :integration/branch
+                        :effect/improved? :effect/tests-delta
+                        :effect/failures-delta
+                        :hil/decision])))))]
+      {:evaluation/result result-id
+       :evaluation/patch patch-id
+       :evaluation/evidence-events evidence})))
+
 (defn reconcile-actor!
   [spec execute?]
   (let [initial-runs (remove nil? (vals (runs)))
@@ -781,9 +823,10 @@
         ;; capacity that was actually reclaimed, including legacy non-actor
         ;; runs that no ActorSpec-specific reconciliation could reap.
         all-runs (remove nil? (vals (runs)))
-        loop-evaluation (kaizen/evaluate (events) all-runs (now))
+        event-log (events)
+        loop-evaluation (kaizen/evaluate event-log all-runs (now))
         latest-homeostasis
-        (some->> (events)
+        (some->> event-log
                  (filter #(= :organism/homeostasis-observed
                              (:tamaki.event/kind %)))
                  last
@@ -803,8 +846,22 @@
                (:objective-prefix admission)
                (update :actor/objective str "\n"
                        (:objective-prefix admission)))
+        evaluation-context
+        (when (contains? (set (:actor/capabilities spec))
+                         :result-evaluation)
+          (result-evaluation-target-context loop-evaluation event-log))
+        spec
+        (if evaluation-context
+          (update
+           spec :actor/objective str
+           "\nEvaluate only this supervisor-selected target; do not enumerate "
+           "or scan the complete event store. Missing evidence makes the "
+           "corresponding hard gate false and confidence lower—it must never "
+           "be invented:\n"
+           (pr-str evaluation-context))
+          spec)
         content-id (:actor/content-id spec)
-        feedback (when content-id (content/status (events) content-id))
+        feedback (when content-id (content/status event-log content-id))
         business-feedback
         (when (or (:actor/business-domain spec)
                   (= :tamaki/business-portfolio (:actor/type spec))
@@ -816,7 +873,7 @@
         spec (attach-business-feedback spec business-feedback)
         maintenance-feedback
         (when (contains? (set (:actor/capabilities spec)) :loop-evaluation)
-          (some->> (events)
+          (some->> event-log
                    (filter #(= :maintenance/completed
                                (:tamaki.event/kind %)))
                    last

@@ -26,6 +26,36 @@
 (defn event-kinds [root]
   (mapv :tamaki.event/kind (store/read-local-events root)))
 
+(deftest result-evaluator-receives-only-one-targets-bounded-evidence
+  (let [patch "patch-1"
+        context
+        (cli/result-evaluation-target-context
+         {:kaizen/evidence
+          {:evaluation-debt [(str "result/" patch) "result/patch-2"]}}
+         [{:tamaki.event/id "review-1"
+           :tamaki.event/run "run-1"
+           :tamaki.event/kind :review/independent
+           :tamaki.event/at 10
+           :tamaki.event/data
+           {:patch/id patch
+            :review/verdict :accepted
+            :review/evidence ["tests passed"]
+            :private/body "must not enter the prompt"}}
+          {:tamaki.event/id "other"
+           :tamaki.event/kind :patch/integrated
+           :tamaki.event/data {:patch/id "patch-2"}}
+          {:tamaki.event/id "noise"
+           :tamaki.event/kind :agent/activity
+           :tamaki.event/data {:patch/id patch}}])]
+    (is (= "result/patch-1" (:evaluation/result context)))
+    (is (= ["review-1"]
+           (mapv :tamaki.event/id
+                 (:evaluation/evidence-events context))))
+    (is (nil?
+         (get-in context
+                 [:evaluation/evidence-events 0
+                  :tamaki.event/data :private/body])))))
+
 (deftest consultation-speaks-only-at-the-decision-boundary
   (let [requests (atom [])]
     (with-redefs [supervisor/consult!
