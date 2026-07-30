@@ -34,7 +34,8 @@
             [kotoba.tamaki.supervisor :as supervisor]
             [kotoba.tamaki.telemetry :as telemetry]
             [kotoba.tamaki.topology-projection :as topology-projection]
-            [kotoba.tamaki.visual :as visual])
+            [kotoba.tamaki.visual :as visual]
+            [kotoba.tamaki.workplace :as workplace])
   (:gen-class))
 
 (defn now [] (System/currentTimeMillis))
@@ -83,6 +84,7 @@
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
+       "  tamaki workplace status|reconcile [--assignment WORKER.edn] [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
        "  tamaki tick [fleet-tick options]\n"
        "  tamaki infer <probe|plan|up|down|ps|serve|generate> ...\n"
@@ -2510,6 +2512,179 @@
               "Usage: tamaki loop start|ensure|ensure-all|list|validate|status|stop-active|tick|run ..."
               {})))))
 
+(defn- workplace-assignment [options]
+  (let [path (or (:assignment options)
+                 "organisms/cloud-itonami-worker.edn")
+        file (io/file path)]
+    (when-not (.isFile file)
+      (throw (ex-info "Workplace assignment was not found"
+                      {:type :workplace/assignment-not-found :path path})))
+    (let [assignment (edn/read-string (slurp file))]
+      (when-not (= workplace/schema (:ao.worker/schema assignment))
+        (throw (ex-info "Workplace assignment schema is unsupported"
+                        {:type :workplace/invalid-assignment
+                         :schema (:ao.worker/schema assignment)})))
+      assignment)))
+
+(defn- latest-homeostasis []
+  (some->> (events)
+           (filter #(= :organism/homeostasis-observed
+                       (:tamaki.event/kind %)))
+           last
+           :tamaki.event/data
+           :homeostasis))
+
+(defn- live-workplace-campaign [project now-ms]
+  (->> (vals (campaigns))
+       (filter #(and (= :active (:tamaki.loop/status %))
+                     (= (.getCanonicalPath (io/file project))
+                        (.getCanonicalPath
+                         (io/file (:tamaki.loop/project %))))
+                     (or (nil? (:tamaki.loop/expires-at %))
+                         (< now-ms (:tamaki.loop/expires-at %)))))
+       (sort-by :tamaki.loop/updated-at)
+       last))
+
+(defn- workplace-gate
+  [assignment project envelope]
+  (let [at (now)
+        capability (:intent/capability envelope)
+        campaign (live-workplace-campaign project at)
+        actor-spec
+        {:actor/capabilities
+         (case capability
+           :intent/submit #{:implementation :review}
+           :stop/request #{:event-observation}
+           #{})}
+        physiology (physiology/agent-admission
+                    (latest-homeostasis) actor-spec)]
+    (cond
+      (not (#{:intent/submit :stop/request} capability))
+      {:admitted? false :reason :unsupported-effect-capability}
+
+      (not= :repository-local
+            (get-in assignment [:ao.worker/authority :source]))
+      {:admitted? false :reason :repository-authority-unavailable}
+
+      (and (= :intent/submit capability) (nil? campaign))
+      {:admitted? false :reason :incarnation-lease-unavailable}
+
+      (not (:admitted? physiology))
+      (assoc physiology :admitted? false)
+
+      :else
+      {:admitted? true
+       :incarnation-lease
+       (if campaign
+         {:status :valid
+          :loop/id (:tamaki.loop/id campaign)
+          :expires-at (:tamaki.loop/expires-at campaign)}
+         {:status :control-reserve})
+       :capability :granted
+       :authority :repository-local
+       :homeostasis physiology
+       :hil (if (= :intent/submit capability)
+              :approval-receipt-required
+              :operator-control-intent)})))
+
+(defn- dispatch-workplace-intent!
+  [project envelope]
+  (case (:intent/capability envelope)
+    :intent/submit
+    (let [summary (some-> (get-in envelope [:intent/payload :summary])
+                          str str/trim)]
+      (when (str/blank? summary)
+        (throw (ex-info "Objective intent has no summary"
+                        {:type :workplace/invalid-objective})))
+      (let [run
+            (model/agent-run
+             {:goal
+              (str "Governed workplace objective: " summary
+                   "\nTreat this as one bounded work item. Inspect current "
+                   "repository evidence, use Radicle as the primary issue "
+                   "authority, produce a reviewable source/test result, and "
+                   "stop at any additional external-effect or consent gate.")
+              :project project
+              :mode :local
+              :runner nil
+              :model nil
+              :capabilities #{:git}
+              :parent (:intent/id envelope)}
+             (now))
+            _ (store/append-event!
+               (store/default-root)
+               (model/event run :run/submitted (now) {:run run}))
+            exit (execute-run! run)]
+        (when-not (zero? exit)
+          (throw (ex-info "Workplace AgentRun failed"
+                          {:type :workplace/agent-run-failed
+                           :run-id (:agent.run/id run)
+                           :exit exit})))
+        {:agent.run/id (:agent.run/id run)
+         :agent.run/status :succeeded
+         :intent/id (:intent/id envelope)}))
+
+    :stop/request
+    (let [active (->> (vals (campaigns))
+                      (filter #(= :active (:tamaki.loop/status %)))
+                      (filter #(= (.getCanonicalPath (io/file project))
+                                  (.getCanonicalPath
+                                   (io/file (:tamaki.loop/project %)))))
+                      vec)]
+      (doseq [campaign active]
+        (append-loop-event! campaign :loop/completed
+                            {:reason :workplace-stop-request
+                             :intent/id (:intent/id envelope)}))
+      {:loops/stopped (mapv :tamaki.loop/id active)
+       :intent/id (:intent/id envelope)})
+
+    (throw (ex-info "Unsupported workplace effect"
+                    {:type :workplace/unsupported-effect
+                     :capability (:intent/capability envelope)}))))
+
+(defn workplace!
+  [{:keys [positional options]}]
+  (let [[action] positional
+        root (store/default-root)
+        assignment (workplace-assignment options)
+        project (.getCanonicalPath (io/file "."))
+        pending (workplace/inbox root)]
+    (case action
+      "status"
+      (do
+        (print-edn
+         {:workplace/schema "kotoba.tamaki.workplace-status.v1"
+          :workplace/worker (:ao.worker/id assignment)
+          :workplace/pending
+          (mapv #(select-keys %
+                              [:intent/id :intent/capability
+                               :intent/received-at :intent/expires-at])
+                pending)})
+        0)
+
+      "reconcile"
+      (if-not (:execute options)
+        (do
+          (print-edn
+           {:workplace/schema "kotoba.tamaki.workplace-plan.v1"
+            :workplace/worker (:ao.worker/id assignment)
+            :workplace/observed (count pending)
+            :workplace/dry-run true})
+          0)
+        (do
+          (print-edn
+           (workplace/reconcile!
+            {:state-root root
+             :assignment assignment
+             :gate-fn #(workplace-gate assignment project %)
+             :dispatch-fn #(dispatch-workplace-intent! project %)}))
+          0))
+
+      (throw
+       (ex-info
+        "Usage: tamaki workplace status|reconcile [--assignment WORKER.edn] [--execute]"
+        {})))))
+
 (defn- ensure-fleet-loop! [path]
   (let [spec (loop-registry/read-spec path)
         output (java.io.StringWriter.)]
@@ -2785,6 +2960,7 @@
       "topology" (topology! parsed)
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
+      "workplace" (workplace! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

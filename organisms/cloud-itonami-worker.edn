@@ -1,0 +1,28 @@
+{:ao.worker/schema "kotoba.ao.worker-assignment.v1"
+ :ao.worker/id "ao:etzhayyim:tamaki"
+ :ao.worker/kind :artificial-organism
+ :ao.worker/organization "etzhayyim"
+ :ao.worker/subject "did:repository:etzhayyim/tamaki"
+ :ao.worker/repository "etzhayyim/tamaki"
+ :ao.worker/runtime :external-supervisor
+ :ao.worker/status :active
+ :ao.worker/capabilities
+ #{:activity/read
+   :objective/read
+   :topology/read
+   :intent/submit
+   :approval/submit
+   :stop/request}
+ :ao.worker/authority
+ {:memory :organism-local
+  :lifecycle :organism-local
+  :source :repository-local
+  :issue :radicle-first}
+ :ao.worker/projection
+ {:transport :cursor-ndjson
+  :redacted? true
+  :event-authority :tamaki-append-only}
+ :ao.worker/intents
+ {:effect-status :not-executed
+  :required-gates
+  [:incarnation-lease :capability :authority :homeostasis :hil]}}
