@@ -30,6 +30,25 @@ self_evolution_mode="${TAMAKI_SELF_EVOLUTION_MODE:-radicle}"
 extra_loop_spec="${TAMAKI_EXTRA_LOOP_SPEC:-}"
 
 cd "$tamaki_root"
+
+# 自分の stdout を自分で回す。plist は StandardOutPath を追記し続けるだけで
+# 回転を持たない —— 実測 2026-08-08、supervisor.log が **20 GB** に育ち、
+# この個体自身の homeostasis が storage 逼迫を報告していた（目標 100 GB 空きに
+# 対して 2.1 GB）。ログを書く側が回すのが一番短い経路なので、ここで回す。
+# truncate は in-place（`: >`）—— 走っている自分の fd を無効にしないため。
+__rotate_own_log() {
+  local f="${1:-}" max="${2:-268435456}"   # 既定 256 MiB
+  [[ -n "$f" && -f "$f" ]] || return 0
+  local sz
+  sz=$(stat -f%z "$f" 2>/dev/null || echo 0)
+  if (( sz > max )); then
+    tail -c 4194304 "$f" > "$f.tail" 2>/dev/null || true
+    : > "$f"
+    cat "$f.tail" >> "$f" 2>/dev/null || true
+    rm -f "$f.tail"
+    echo "[supervisor] rotated own log at ${sz} bytes (kept last 4 MiB)"
+  fi
+}
 export COM_JUNKAWASAKI_ROOT="${COM_JUNKAWASAKI_ROOT:-$(cd "$tamaki_root/../../.." && pwd)}"
 export TAMAKI_WORKSPACE="${TAMAKI_WORKSPACE:-$COM_JUNKAWASAKI_ROOT}"
 export TAMAKI_WORKSPACE_ROOT="${TAMAKI_WORKSPACE_ROOT:-$COM_JUNKAWASAKI_ROOT}"
@@ -183,6 +202,7 @@ control_actor_pid=$!
         --policy "$self_observation_policy" \
         --file "$self_observation_file" || true
     fi
+    __rotate_own_log "$tamaki_root/.tamaki/supervisor.log"
     sleep "$bridge_interval_seconds"
   done
 ) &
