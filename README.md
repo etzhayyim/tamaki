@@ -539,6 +539,48 @@ bin/tamaki doctor
 
 ## Governed self-evolution
 
+### Executable world-model evolution
+
+Tamaki can evolve a repository AO's explicit system-dynamics model from the
+gap between a forecast and later observations. The LLM is a hypothesis
+generator, never the selector: it emits typed parameter, equation, or
+structure mutations as EDN data. Tamaki rejects dangling references,
+unsupported operators, and algebraic cycles, simulates the survivors, and
+selects only a candidate whose validation loss plus complexity penalty beats
+the incumbent by the configured minimum.
+
+```sh
+# Read-only forecast.
+bin/tamaki world-model forecast \
+  --model examples/world-model.example.edn \
+  --observation /tmp/current-observation.edn
+
+# Read-only selection receipt (default).
+bin/tamaki world-model evolve \
+  --model examples/world-model.example.edn \
+  --observations examples/world-model-observations.example.edn \
+  --candidates examples/world-model-candidates.example.edn \
+  --complexity-weight 0.01 --min-improvement 0.01
+
+# Explicitly persist selected.edn, selected.xmile, and selection.edn.
+bin/tamaki world-model evolve \
+  --model examples/world-model.example.edn \
+  --observations examples/world-model-observations.example.edn \
+  --candidates examples/world-model-candidates.example.edn \
+  --complexity-weight 0.01 --min-improvement 0.01 \
+  --output /tmp/tamaki-world-model --execute
+```
+
+`selected.edn` is the canonical safe executable AST. `selected.xmile` is its
+portable, inspectable XMILE projection. Keeping the typed AST beside XMILE is
+intentional: arbitrary XML equations are not evaluated as host code. The
+selection receipt retains rejected hypotheses as falsification evidence.
+
+The first implementation uses one-step Euler forecasts and normalized absolute
+error. It does not fit neural residuals, perform Bayesian parameter inference,
+or autonomously invent candidates. Those belong behind the same candidate and
+validation boundary rather than inside the simulator.
+
 Radicle is the source of truth for both normal delivery and changes to
 Tamaki's own future behaviour. GitHub is a subordinate mirror used for CI,
 visibility, and optional secondary review:
