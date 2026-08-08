@@ -1,0 +1,8 @@
+[{:observation/id :activity-1
+  :observation/state {:accepted-knowledge 10.0}
+  :observation/action {:issue-pressure 2.0}
+  :observation/next-state {:accepted-knowledge 10.9}}
+ {:observation/id :activity-2
+  :observation/state {:accepted-knowledge 10.9}
+  :observation/action {:issue-pressure 4.0}
+  :observation/next-state {:accepted-knowledge 12.8}}]
