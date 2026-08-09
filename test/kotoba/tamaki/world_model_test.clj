@@ -1,6 +1,8 @@
 (ns kotoba.tamaki.world-model-test
   (:require [clojure.test :refer [deftest is testing]]
-            [kotoba.tamaki.world-model :as world-model]))
+            [kotoba.tamaki.world-model :as world-model]
+            [xmile.validate :as xmile-validate]
+            [xmile.xml :as xmile-xml]))
 
 (def incumbent
   {:world-model/version 1
@@ -77,11 +79,14 @@
     (is (= incumbent (:world-model.selection/model selection)))))
 
 (deftest xmile-projection-is-standard-shaped-and-inspectable
-  (let [xmile (world-model/to-xmile incumbent)]
+  (let [xmile (world-model/to-xmile incumbent)
+        document (xmile-xml/parse-string xmile)]
     (is (re-find #"xmlns=\"http://docs.oasis-open.org/xmile/ns/XMILE/v1.0\"" xmile))
     (is (re-find #"<stock name=\"accepted_knowledge\">" xmile))
     (is (re-find #"<flow name=\"accepted_change\">" xmile))
-    (is (re-find #"learning_rate \* issue_pressure" xmile))))
+    (is (re-find #"learning_rate \* issue_pressure" xmile))
+    (is (xmile-validate/valid? (xmile-validate/validate-doc document)))
+    (is (= "tamaki-activity" (get-in document [:xmile/models 0 :xmile/name])))))
 
 (deftest unknown-references-and-operators-fail-closed
   (testing "dangling causal reference"

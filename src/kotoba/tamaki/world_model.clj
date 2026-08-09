@@ -10,6 +10,14 @@
 (def operators #{:+ :- :* :/ :min :max :abs})
 (def mutation-levels #{:parameter :equation :structure})
 
+(declare canonical-model)
+
+(defn- runtime-call [function & arguments]
+  (let [resolved (requiring-resolve
+                  (symbol "kotoba.tamaki.world-model-runtime"
+                          (name function)))]
+    (apply resolved arguments)))
+
 (defn- finite-number? [value]
   (and (number? value) (Double/isFinite (double value))))
 
@@ -32,28 +40,6 @@
   (if (vector? expression)
     (inc (reduce + (map expression-size (rest expression))))
     1))
-
-(defn- eval-expression [expression resolve-name]
-  (cond
-    (number? expression) (double expression)
-    (keyword? expression) (double (resolve-name expression))
-    (vector? expression)
-    (let [[operator & arguments] expression
-          values (mapv #(eval-expression % resolve-name) arguments)]
-      (case operator
-        :+ (reduce + 0.0 values)
-        :- (if (= 1 (count values)) (- (first values)) (reduce - values))
-        :* (reduce * 1.0 values)
-        :/ (reduce (fn [left right]
-                     (when (zero? right)
-                       (fail! "Division by zero in world model"
-                              {:expression expression}))
-                     (/ left right))
-                   values)
-        :min (apply min values)
-        :max (apply max values)
-        :abs (Math/abs (double (first values)))))
-    :else (fail! "Invalid world-model expression" {:expression expression})))
 
 (defn names-in [model]
   (set/union (set (keys (:world-model/stocks model)))
@@ -117,26 +103,9 @@
             (fail! "Flow units must match stock units per step"
                    {:stock name :flow flow-name :expected expected-units
                     :actual (:units flow)})))))
-    ;; Resolve every variable once; recursive resolution detects algebraic
-    ;; cycles before any candidate can become executable.
-    (let [cache (atom {})
-          visiting (atom #{})]
-      (letfn [(resolve-name [name]
-                (cond
-                  (contains? @cache name) (get @cache name)
-                  (contains? parameters name) (:value (get parameters name))
-                  (contains? stocks name) (:initial (get stocks name))
-                  (contains? @visiting name)
-                  (fail! "Algebraic cycle in world model" {:name name})
-                  (contains? variables name)
-                  (do (swap! visiting conj name)
-                      (let [value (eval-expression
-                                   (:equation (get variables name)) resolve-name)]
-                        (swap! visiting disj name)
-                        (swap! cache assoc name value)
-                        value))
-                  :else (fail! "Unknown world-model name" {:name name})))]
-        (doseq [name (keys variables)] (resolve-name name))))
+    (when-let [problems (seq (runtime-call 'validation-errors
+                                           (canonical-model model nil nil)))]
+      (fail! "Canonical XMILE validation failed" {:problems problems}))
     model))
 
 (defn forecast
@@ -145,11 +114,7 @@
   [model state action]
   (validate model)
   (let [stocks (:world-model/stocks model)
-        variables (:world-model/variables model)
-        parameters (:world-model/parameters model)
-        dt (double (:world-model/time-step model))
-        cache (atom {})
-        visiting (atom #{})]
+        parameters (:world-model/parameters model)]
     (doseq [[name value] action]
       (when-not (contains? parameters name)
         (fail! "Action may override declared parameters only" {:name name}))
@@ -159,35 +124,19 @@
         (when-not (<= (double lower) (double value) (double upper))
           (fail! "Action is outside parameter bounds"
                  {:name name :value value :bounds [lower upper]}))))
-    (letfn [(resolve-name [name]
-              (cond
-                (contains? @cache name) (get @cache name)
-                (contains? action name) (double (get action name))
-                (contains? parameters name) (double (:value (get parameters name)))
-                (contains? stocks name) (double (get state name
-                                                     (:initial (get stocks name))))
-                (contains? @visiting name)
-                (fail! "Algebraic cycle during forecast" {:name name})
-                (contains? variables name)
-                (do (swap! visiting conj name)
-                    (let [value (eval-expression
-                                 (:equation (get variables name)) resolve-name)]
-                      (swap! visiting disj name)
-                      (swap! cache assoc name value)
-                      value))
-                :else (fail! "Unknown name during forecast" {:name name})))]
-      (let [environment (into {} (map (fn [name] [name (resolve-name name)]))
-                              (keys variables))
-            next-state
-            (into {}
-                  (map (fn [[name {:keys [initial inflows outflows]}]]
-                         (let [current (double (get state name initial))
-                               incoming (reduce + 0.0 (map resolve-name inflows))
-                               outgoing (reduce + 0.0 (map resolve-name outflows))]
-                           [name (+ current (* dt (- incoming outgoing)))])))
-                  stocks)]
-        {:world-model/prediction next-state
-         :world-model/environment environment}))))
+    (let [canonical (canonical-model model state action)
+          result (runtime-call 'run canonical)
+          series (:xmile/series result)
+          by-keyword (fn [names]
+                       (into {}
+                             (map (fn [name]
+                                    [name (last (get series
+                                                     (-> name clojure.core/name
+                                                         (str/replace "-" "_"))))]))
+                             names))]
+      {:world-model/prediction (by-keyword (keys stocks))
+       :world-model/environment
+       (by-keyword (keys (:world-model/variables model)))})))
 
 (defn apply-mutation [model {:candidate/keys [level operations] :as candidate}]
   (when-not (contains? mutation-levels level)
@@ -288,13 +237,6 @@
      :world-model.selection/candidate (when accepted? (:candidate/id winner))
      :world-model.selection/model (if accepted? (:candidate/model winner) model)}))
 
-(defn- xml-escape [value]
-  (-> (str value)
-      (str/replace "&" "&amp;")
-      (str/replace "<" "&lt;")
-      (str/replace ">" "&gt;")
-      (str/replace "\"" "&quot;")))
-
 (defn- xmile-name [name] (-> name clojure.core/name (str/replace "-" "_")))
 
 (defn- expression->xmile [expression]
@@ -315,35 +257,58 @@
         :max (str "MAX(" (str/join ", " rendered) ")")
         :abs (str "ABS(" (first rendered) ")")))))
 
+(defn canonical-model
+  "Project Tamaki's mutation-safe AST into the fleet's canonical OASIS XMILE
+  data model. `state` replaces stock initial values for a one-step forecast;
+  `action` replaces bounded parameter auxiliaries for that intervention."
+  [model state action]
+  (let [dt (double (:world-model/time-step model))
+        stop (if (or state action) dt (double (:world-model/horizon model 1)))
+        base {:xmile/name (:world-model/id model)
+              :xmile/sim-specs
+              {:xmile/start 0.0 :xmile/stop stop :xmile/dt dt
+               :xmile/method :euler :xmile/time-units "step"}
+              :xmile/variables {}}
+        with-stocks
+        (reduce
+         (fn [result [name {:keys [initial inflows outflows units]}]]
+           (let [wire-name (xmile-name name)]
+             (assoc-in result [:xmile/variables wire-name]
+                       {:xmile/kind :stock :xmile/name wire-name
+                        :xmile/eqn (str (double (get state name initial)))
+                        :xmile/inflows (set (map xmile-name inflows))
+                        :xmile/outflows (set (map xmile-name outflows))
+                        :xmile/stock-type :stock :xmile/units units})))
+         base (:world-model/stocks model))
+        with-variables
+        (reduce
+         (fn [result [name {:keys [kind equation units]}]]
+           (let [wire-name (xmile-name name)]
+             (assoc-in result [:xmile/variables wire-name]
+                       {:xmile/kind kind :xmile/name wire-name
+                        :xmile/eqn (expression->xmile equation)
+                        :xmile/units units})))
+         with-stocks (:world-model/variables model))]
+    (reduce
+     (fn [result [name {:keys [value units]}]]
+       (let [wire-name (xmile-name name)]
+         (assoc-in result [:xmile/variables wire-name]
+                   {:xmile/kind :aux :xmile/name wire-name
+                    :xmile/eqn (str (double (get action name value)))
+                    :xmile/units units})))
+     with-variables (:world-model/parameters model))))
+
 (defn to-xmile [model]
   (validate model)
-  (let [dt (:world-model/time-step model)
-        stop (:world-model/horizon model 1)]
-    (str "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-         "<xmile xmlns=\"http://docs.oasis-open.org/xmile/ns/XMILE/v1.0\" version=\"1.0\">\n"
-         "  <header><name>" (xml-escape (:world-model/id model)) "</name></header>\n"
-         "  <sim_specs method=\"Euler\" time_units=\"step\"><start>0</start><stop>"
-         stop "</stop><dt>" dt "</dt></sim_specs>\n"
-         "  <model><variables>\n"
-         (apply str
-                (for [[name {:keys [initial inflows outflows units]}]
-                      (:world-model/stocks model)]
-                  (str "    <stock name=\"" (xmile-name name) "\"><eqn>" initial
-                       "</eqn>" (apply str (map #(str "<inflow>" (xmile-name %) "</inflow>") inflows))
-                       (apply str (map #(str "<outflow>" (xmile-name %) "</outflow>") outflows))
-                       "<units>" (xml-escape units) "</units></stock>\n")))
-         (apply str
-                (for [[name {:keys [equation units kind]}]
-                      (:world-model/variables model)]
-                  (str "    <" (if (= :flow kind) "flow" "aux") " name=\""
-                       (xmile-name name) "\"><eqn>" (xml-escape (expression->xmile equation))
-                       "</eqn><units>" (xml-escape units) "</units></"
-                       (if (= :flow kind) "flow" "aux") ">\n")))
-         (apply str
-                (for [[name {:keys [value units]}] (:world-model/parameters model)]
-                  (str "    <aux name=\"" (xmile-name name) "\"><eqn>" value
-                       "</eqn><units>" (xml-escape units) "</units></aux>\n")))
-         "  </variables></model>\n</xmile>\n")))
+  (let [doc {:xmile/header
+             {:xmile/vendor "kotoba-lang"
+              :xmile/product {:xmile/name "tamaki" :xmile/version "1"}
+              :xmile/name (:world-model/id model)}
+             :xmile/models [(canonical-model model nil nil)]}
+        problems (runtime-call 'document-validation-errors doc)]
+    (when (seq problems)
+      (fail! "Canonical XMILE document validation failed" {:problems problems}))
+    (runtime-call 'emit-string doc)))
 
 (defn write-xmile! [model path]
   (let [file (io/file path)]

@@ -14,10 +14,13 @@ execution, and selection authority.
 
 ## Decision
 
-Represent the canonical executable model as a constrained EDN AST with stocks,
+Represent the canonical mutation state as a constrained EDN AST with stocks,
 flows, auxiliaries, parameters, units, and a small arithmetic expression
-language. Project every selected model to XMILE 1.0 for inspection and
-interchange.
+language. Project every selected model into the pinned
+`kotoba-lang/org-oasis-open-xmile` data model. That shared capability owns
+OASIS document validation, equation semantics, Euler execution, and XMILE 1.0
+emission; Tamaki owns only mutation, observation loss, model-complexity
+selection, and its authority boundary.
 
 Candidate generation and candidate selection are separate:
 
@@ -36,11 +39,13 @@ review, canary, homeostasis, and human gates continue to govern action.
 
 ## Consequences
 
-- The model is persistent, executable, inspectable, and safe to replay.
+- The model is persistent, executable through the shared XMILE capability,
+  inspectable, and safe to replay.
 - LLM hypotheses are falsifiable data rather than trusted code.
 - Complexity pressure makes single-observation exception variables costly.
 - XMILE is a projection in this first version; arbitrary imported XMILE is not
-  executed. Import requires a separately reviewed expression parser and unit
-  checker.
+  accepted as a Tamaki mutation. Any future import path must pass the shared
+  secure parser and validator, then separately satisfy Tamaki's typed mutation
+  and authority boundary.
 - Neural residual learning, Bayesian ensembles, multi-step calibration, and
   automatic candidate generation remain follow-up work.

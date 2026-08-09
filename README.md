@@ -571,10 +571,14 @@ bin/tamaki world-model evolve \
   --output /tmp/tamaki-world-model --execute
 ```
 
-`selected.edn` is the canonical safe executable AST. `selected.xmile` is its
-portable, inspectable XMILE projection. Keeping the typed AST beside XMILE is
-intentional: arbitrary XML equations are not evaluated as host code. The
-selection receipt retains rejected hypotheses as falsification evidence.
+`selected.edn` is the canonical mutation-safe Tamaki AST. `selected.xmile` is
+its portable, inspectable XMILE projection. Projection, OASIS document
+validation, equation evaluation, and Euler execution delegate to the pinned
+`kotoba-lang/org-oasis-open-xmile` capability rather than duplicating an XMILE
+runtime in Tamaki. Keeping the typed mutation AST beside XMILE is intentional:
+arbitrary XML equations are not accepted as mutation instructions or evaluated
+as host code. The selection receipt retains rejected hypotheses as
+falsification evidence.
 
 The first implementation uses one-step Euler forecasts and normalized absolute
 error. It does not fit neural residuals, perform Bayesian parameter inference,
