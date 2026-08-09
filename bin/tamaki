@@ -19,6 +19,12 @@ if ! command -v clojure >/dev/null 2>&1; then
 fi
 
 CP=$(clojure -Spath)
+# The canonical XMILE text boundary uses the JVM's hardened XML parser.
+# Keep every other command on Babashka's fast path, but never make XML parser
+# availability depend on Babashka's partial javax.xml compatibility.
+if [ "${1:-}" = "world-model" ]; then
+  exec clojure -M:run "$@"
+fi
 if command -v bb >/dev/null 2>&1; then
   exec bb -cp "$CP" -m kotoba.tamaki.cli "$@"
 fi

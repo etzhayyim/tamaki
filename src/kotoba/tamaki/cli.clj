@@ -35,6 +35,7 @@
             [kotoba.tamaki.telemetry :as telemetry]
             [kotoba.tamaki.topology-projection :as topology-projection]
             [kotoba.tamaki.visual :as visual]
+            [kotoba.tamaki.world-model :as world-model]
             [kotoba.tamaki.workplace :as workplace])
   (:gen-class))
 
@@ -83,6 +84,7 @@
        "  tamaki fleet status|reconcile [--policy FLEET.edn] [--execute]\n"
        "  tamaki topology import|project --file ROADMAP.edn --project PATH [--execute]\n"
        "  tamaki evolve propose|status|transition|open-patch|open-pr|promote ...\n"
+       "  tamaki world-model forecast|evolve --model MODEL.edn ...\n"
        "  tamaki bridge status|reconcile [--execute]\n"
        "  tamaki workplace status|reconcile [--assignment WORKER.edn] [--execute]\n"
        "  tamaki nodes [fleet-nodes options]\n"
@@ -2685,6 +2687,66 @@
         "Usage: tamaki workplace status|reconcile [--assignment WORKER.edn] [--execute]"
         {})))))
 
+(defn- read-edn-file! [path label]
+  (when (str/blank? path)
+    (throw (ex-info (str label " path is required") {:label label})))
+  (edn/read-string (slurp (io/file path))))
+
+(defn world-model!
+  "Deterministic boundary around externally generated model hypotheses.
+  `forecast` is read-only. `evolve` writes a selected EDN state, XMILE
+  projection, and selection receipt only when --execute is explicit."
+  [{:keys [positional options]}]
+  (let [[action] positional
+        model (read-edn-file! (:model options) "world model")]
+    (case action
+      "forecast"
+      (let [observation (read-edn-file! (:observation options) "observation")]
+        (print-edn
+         (world-model/forecast model
+                               (:observation/state observation)
+                               (:observation/action observation)))
+        0)
+
+      "evolve"
+      (let [observations (read-edn-file! (:observations options) "observations")
+            candidates (read-edn-file! (:candidates options) "candidates")
+            evaluation-options
+            {:complexity-weight
+             (Double/parseDouble (or (:complexity-weight options) "0.01"))
+             :min-improvement
+             (Double/parseDouble (or (:min-improvement options) "0.0"))}
+            selection (world-model/select-successor
+                       model observations candidates evaluation-options)
+            receipt (dissoc selection :world-model.selection/model)]
+        (if-not (:execute options)
+          (print-edn (assoc receipt :world-model.selection/dry-run true))
+          (let [directory (io/file (or (:output options)
+                                       ".tamaki/world-model"))
+                selected (:world-model.selection/model selection)
+                edn-path (io/file directory "selected.edn")
+                xmile-path (io/file directory "selected.xmile")
+                receipt-path (io/file directory "selection.edn")]
+            (.mkdirs directory)
+            (spit edn-path (str (pr-str selected) "\n"))
+            (world-model/write-xmile! selected xmile-path)
+            (spit receipt-path (str (pr-str receipt) "\n"))
+            (print-edn
+             (assoc receipt
+                    :world-model.selection/edn (.getCanonicalPath edn-path)
+                    :world-model.selection/xmile (.getCanonicalPath xmile-path)
+                    :world-model.selection/receipt
+                    (.getCanonicalPath receipt-path)))))
+        0)
+
+      (throw
+       (ex-info
+        (str "Usage: tamaki world-model forecast --model MODEL.edn "
+             "--observation OBS.edn | evolve --model MODEL.edn "
+             "--observations OBS.edn --candidates CANDIDATES.edn "
+             "[--execute --output DIR]")
+        {})))))
+
 (defn- ensure-fleet-loop! [path]
   (let [spec (loop-registry/read-spec path)
         output (java.io.StringWriter.)]
@@ -2961,6 +3023,7 @@
       "evolve" (evolve! parsed)
       "bridge" (bridge! parsed)
       "workplace" (workplace! parsed)
+      "world-model" (world-model! parsed)
       "nodes" (passthrough! (adapters/fleet-tool-command "nodes" rest)
                             (adapters/sibling "kotoba-fleet"))
       "tick" (passthrough! (adapters/fleet-tool-command "tick" rest)

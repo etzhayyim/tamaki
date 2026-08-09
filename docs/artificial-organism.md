@@ -347,6 +347,19 @@ Self-evolution may change ActorSpecs, policies, or routing, but follows the same
 Radicle-first issue, patch, independent review, and integration gates as other
 Tamaki changes.
 
+World-model evolution is a narrower inner scientific loop. Each repository AO
+may keep an executable stock/flow model, forecast a decision-relevant next
+state, observe the actual state, and ask an LLM or symbolic search process for
+typed hypotheses. A deterministic simulator and scorer select among the
+incumbent and candidates using predictive loss, parsimony, and structural
+validity. The hypothesis generator cannot write the selected model directly.
+
+Acceptance of a better world model changes only the AO's explicit belief
+artifact. It does not itself authorize a repository patch, network action,
+resource acquisition, reproduction, or lease extension. Those effects remain
+under their existing capability, review, and human boundaries. Thus a model
+may evolve more frequently than the organism is allowed to act.
+
 The agent loop also carries these constraints in every cycle goal. It must
 pause when consent or values conflict and cannot acquire resources, reproduce,
 or extend the organism lease. A continuous loop is continuous only inside its

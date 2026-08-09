@@ -1,0 +1,23 @@
+;; These are typed hypotheses that an LLM, symbolic regressor, or human may
+;; propose. They are data, not executable code. Tamaki evaluates every
+;; candidate and records invalid or losing hypotheses in the receipt.
+[{:candidate/id :higher-learning-rate
+  :candidate/proposer :llm
+  :candidate/evidence [:activity-1 :activity-2]
+  :candidate/level :parameter
+  :candidate/operations
+  [{:op :set-parameter :name :learning-rate :value 0.5}]}
+ {:candidate/id :pressure-saturation
+  :candidate/proposer :llm
+  :candidate/evidence [:activity-1 :activity-2]
+  :candidate/level :equation
+  :candidate/operations
+  [{:op :set-equation :name :accepted-change
+    :equation [:min 1.5 [:* :learning-rate :issue-pressure]]}]}
+ {:candidate/id :memorize-one-observation
+  :candidate/proposer :llm
+  :candidate/evidence [:activity-1]
+  :candidate/level :structure
+  :candidate/operations
+  [{:op :add-variable :name :activity-1-exception
+    :spec {:kind :aux :equation 0.5 :units "change"}}]}]

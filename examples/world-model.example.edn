@@ -1,0 +1,20 @@
+{:world-model/version 1
+ :world-model/id "tamaki-repository-activity"
+ :world-model/time-step 1
+ :world-model/horizon 12
+ :world-model/stocks
+ {:accepted-knowledge {:initial 10.0
+                       :inflows [:accepted-change]
+                       :outflows [:knowledge-decay]
+                       :units "change"}}
+ :world-model/variables
+ {:accepted-change {:kind :flow
+                    :equation [:* :learning-rate :issue-pressure]
+                    :units "change/step"}
+  :knowledge-decay {:kind :flow
+                    :equation [:* :decay-rate :accepted-knowledge]
+                    :units "change/step"}}
+ :world-model/parameters
+ {:learning-rate {:value 0.2 :units "1" :bounds [0.0 1.0]}
+  :decay-rate {:value 0.01 :units "1/step" :bounds [0.0 0.2]}
+  :issue-pressure {:value 2.0 :units "change/step"}}}

@@ -1,0 +1,317 @@
+(ns kotoba.tamaki.world-model
+  "Executable, bounded system-dynamics world models.
+
+  Models are data.  An LLM may propose typed mutations, but only this
+  deterministic evaluator can select a successor and project it to XMILE."
+  (:require [clojure.java.io :as io]
+            [clojure.set :as set]
+            [clojure.string :as str]))
+
+(def operators #{:+ :- :* :/ :min :max :abs})
+(def mutation-levels #{:parameter :equation :structure})
+
+(declare canonical-model)
+
+(defn- runtime-call [function & arguments]
+  (let [resolved (requiring-resolve
+                  (symbol "kotoba.tamaki.world-model-runtime"
+                          (name function)))]
+    (apply resolved arguments)))
+
+(defn- finite-number? [value]
+  (and (number? value) (Double/isFinite (double value))))
+
+(defn- fail! [message data]
+  (throw (ex-info message (assoc data :world-model/valid? false))))
+
+(defn expression-references [expression]
+  (cond
+    (keyword? expression) #{expression}
+    (number? expression) #{}
+    (vector? expression)
+    (let [[operator & arguments] expression]
+      (when-not (contains? operators operator)
+        (fail! "Unsupported world-model operator" {:operator operator}))
+      (apply set/union #{} (map expression-references arguments)))
+    :else (fail! "World-model expression must be a number, keyword, or vector"
+                 {:expression expression})))
+
+(defn- expression-size [expression]
+  (if (vector? expression)
+    (inc (reduce + (map expression-size (rest expression))))
+    1))
+
+(defn names-in [model]
+  (set/union (set (keys (:world-model/stocks model)))
+             (set (keys (:world-model/variables model)))
+             (set (keys (:world-model/parameters model)))))
+
+(defn validate
+  "Fail closed on dangling references, algebraic cycles, missing units, or
+  stock-flow mismatches. Returns the unchanged model when valid."
+  [model]
+  (when-not (= 1 (:world-model/version model))
+    (fail! "Unsupported world-model version"
+           {:version (:world-model/version model)}))
+  (when-not (and (finite-number? (:world-model/time-step model))
+                 (pos? (double (:world-model/time-step model))))
+    (fail! "World-model time step must be positive" {}))
+  (let [stocks (:world-model/stocks model)
+        variables (:world-model/variables model)
+        parameters (:world-model/parameters model)
+        all-names (names-in model)
+        declared (concat stocks variables parameters)]
+    (when (empty? stocks)
+      (fail! "World model requires at least one stock" {}))
+    (doseq [[name spec] declared]
+      (when-not (and (keyword? name) (not (str/blank? (:units spec))))
+        (fail! "Every world-model element requires a keyword name and units"
+               {:name name :spec spec})))
+    (doseq [[name {:keys [value bounds]}] parameters]
+      (when-not (finite-number? value)
+        (fail! "Parameter value must be numeric" {:parameter name :value value}))
+      (when (and bounds
+                 (not (<= (double (first bounds))
+                          (double value)
+                          (double (second bounds)))))
+        (fail! "Parameter value is outside declared bounds"
+               {:parameter name :value value :bounds bounds})))
+    (doseq [[name spec] variables]
+      (when-not (contains? #{:flow :aux} (:kind spec))
+        (fail! "World-model variable kind must be :flow or :aux"
+               {:name name :kind (:kind spec)}))
+      (let [missing (set/difference (expression-references (:equation spec))
+                                    all-names)]
+        (when (seq missing)
+          (fail! "World-model equation has dangling references"
+                 {:name name :missing missing}))))
+    (doseq [[name {:keys [initial inflows outflows units]}] stocks]
+      (when-not (finite-number? initial)
+        (fail! "Stock initial value must be numeric" {:stock name}))
+      (let [missing (set/difference (set (concat inflows outflows))
+                                    (set (keys variables)))]
+        (when (seq missing)
+          (fail! "Stock references unknown flows"
+                 {:stock name :missing missing})))
+      (doseq [flow-name (concat inflows outflows)]
+        (let [flow (get variables flow-name)
+              expected-units (str units "/step")]
+          (when-not (= :flow (:kind flow))
+            (fail! "Stock inflow/outflow must reference a flow"
+                   {:stock name :variable flow-name :kind (:kind flow)}))
+          (when-not (= expected-units (:units flow))
+            (fail! "Flow units must match stock units per step"
+                   {:stock name :flow flow-name :expected expected-units
+                    :actual (:units flow)})))))
+    (when-let [problems (seq (runtime-call 'validation-errors
+                                           (canonical-model model nil nil)))]
+      (fail! "Canonical XMILE validation failed" {:problems problems}))
+    model))
+
+(defn forecast
+  "Euler one-step forecast. `state` supplies observed stock values and
+  `action` may override declared parameters for a bounded intervention."
+  [model state action]
+  (validate model)
+  (let [stocks (:world-model/stocks model)
+        parameters (:world-model/parameters model)]
+    (doseq [[name value] action]
+      (when-not (contains? parameters name)
+        (fail! "Action may override declared parameters only" {:name name}))
+      (when-not (finite-number? value)
+        (fail! "Action value must be finite" {:name name :value value}))
+      (when-let [[lower upper] (:bounds (get parameters name))]
+        (when-not (<= (double lower) (double value) (double upper))
+          (fail! "Action is outside parameter bounds"
+                 {:name name :value value :bounds [lower upper]}))))
+    (let [canonical (canonical-model model state action)
+          result (runtime-call 'run canonical)
+          series (:xmile/series result)
+          by-keyword (fn [names]
+                       (into {}
+                             (map (fn [name]
+                                    [name (last (get series
+                                                     (-> name clojure.core/name
+                                                         (str/replace "-" "_"))))]))
+                             names))]
+      {:world-model/prediction (by-keyword (keys stocks))
+       :world-model/environment
+       (by-keyword (keys (:world-model/variables model)))})))
+
+(defn apply-mutation [model {:candidate/keys [level operations] :as candidate}]
+  (when-not (contains? mutation-levels level)
+    (fail! "Unknown world-model mutation level" {:candidate candidate}))
+  (validate
+   (reduce
+    (fn [result {:keys [op name value equation spec]}]
+      (case op
+        :set-parameter
+        (do (when-not (= :parameter level)
+              (fail! "Parameter mutation requires :parameter level" {:op op}))
+            (when-not (contains? (:world-model/parameters result) name)
+              (fail! "Cannot mutate unknown parameter" {:name name}))
+            (assoc-in result [:world-model/parameters name :value] value))
+
+        :set-equation
+        (do (when-not (contains? #{:equation :structure} level)
+              (fail! "Equation mutation has the wrong level" {:op op}))
+            (when-not (contains? (:world-model/variables result) name)
+              (fail! "Cannot mutate unknown equation" {:name name}))
+            (assoc-in result [:world-model/variables name :equation] equation))
+
+        :add-variable
+        (do (when-not (= :structure level)
+              (fail! "Adding a variable requires :structure level" {:op op}))
+            (when (contains? (names-in result) name)
+              (fail! "World-model name already exists" {:name name}))
+            (assoc-in result [:world-model/variables name] spec))
+
+        (fail! "Unsupported world-model mutation" {:operation op})))
+    model operations)))
+
+(defn complexity [model]
+  (let [elements (+ (count (:world-model/stocks model))
+                    (count (:world-model/variables model))
+                    (count (:world-model/parameters model)))
+        expression-nodes (reduce + 0
+                                 (map (comp expression-size :equation val)
+                                      (:world-model/variables model)))]
+    (+ (double elements) (* 0.05 expression-nodes))))
+
+(defn prediction-loss [model observations]
+  (let [errors
+        (for [{:observation/keys [state action next-state]} observations
+              [name actual] next-state]
+          (let [predicted (get-in (forecast model state action)
+                                  [:world-model/prediction name])]
+            (when (nil? predicted)
+              (fail! "Observation names a non-stock output" {:name name}))
+            (/ (Math/abs (- (double predicted) (double actual)))
+               (max 1.0 (Math/abs (double actual))))))]
+    (if (seq errors)
+      (/ (reduce + errors) (double (count errors)))
+      (fail! "At least one observed next-state value is required" {}))))
+
+(defn score [model observations {:keys [complexity-weight]
+                                  :or {complexity-weight 0.01}}]
+  (let [loss (prediction-loss model observations)
+        model-complexity (complexity model)]
+    {:score/prediction-loss loss
+     :score/complexity model-complexity
+     :score/total (+ loss (* (double complexity-weight) model-complexity))}))
+
+(defn select-successor
+  "Evaluate incumbent plus LLM-authored candidates. Invalid candidates remain
+  in the receipt as falsified hypotheses. The incumbent wins ties and changes
+  require `min-improvement`."
+  [model observations candidates {:keys [min-improvement] :as options}]
+  (let [minimum (double (or min-improvement 0.0))
+        incumbent-score (score model observations options)
+        evaluated
+        (mapv
+         (fn [candidate]
+           (try
+             (let [candidate-model (apply-mutation model candidate)]
+               (assoc candidate
+                      :candidate/valid? true
+                      :candidate/model candidate-model
+                      :candidate/score (score candidate-model observations options)))
+             (catch Exception error
+               (assoc candidate :candidate/valid? false
+                      :candidate/rejection (.getMessage error)
+                      :candidate/evidence (ex-data error)))))
+         candidates)
+        winner (first (sort-by (juxt #(get-in % [:candidate/score :score/total])
+                                     #(str (:candidate/id %)))
+                               (filter :candidate/valid? evaluated)))
+        improvement (when winner
+                      (- (:score/total incumbent-score)
+                         (get-in winner [:candidate/score :score/total])))
+        accepted? (and winner (> improvement minimum))]
+    {:world-model.selection/version 1
+     :world-model.selection/incumbent-score incumbent-score
+     :world-model.selection/candidates
+     (mapv #(dissoc % :candidate/model) evaluated)
+     :world-model.selection/accepted? (boolean accepted?)
+     :world-model.selection/improvement (or improvement 0.0)
+     :world-model.selection/candidate (when accepted? (:candidate/id winner))
+     :world-model.selection/model (if accepted? (:candidate/model winner) model)}))
+
+(defn- xmile-name [name] (-> name clojure.core/name (str/replace "-" "_")))
+
+(defn- expression->xmile [expression]
+  (cond
+    (number? expression) (str expression)
+    (keyword? expression) (xmile-name expression)
+    (vector? expression)
+    (let [[operator & arguments] expression
+          rendered (map expression->xmile arguments)]
+      (case operator
+        :+ (str "(" (str/join " + " rendered) ")")
+        :- (if (= 1 (count rendered))
+             (str "(-" (first rendered) ")")
+             (str "(" (str/join " - " rendered) ")"))
+        :* (str "(" (str/join " * " rendered) ")")
+        :/ (str "(" (str/join " / " rendered) ")")
+        :min (str "MIN(" (str/join ", " rendered) ")")
+        :max (str "MAX(" (str/join ", " rendered) ")")
+        :abs (str "ABS(" (first rendered) ")")))))
+
+(defn canonical-model
+  "Project Tamaki's mutation-safe AST into the fleet's canonical OASIS XMILE
+  data model. `state` replaces stock initial values for a one-step forecast;
+  `action` replaces bounded parameter auxiliaries for that intervention."
+  [model state action]
+  (let [dt (double (:world-model/time-step model))
+        stop (if (or state action) dt (double (:world-model/horizon model 1)))
+        base {:xmile/name (:world-model/id model)
+              :xmile/sim-specs
+              {:xmile/start 0.0 :xmile/stop stop :xmile/dt dt
+               :xmile/method :euler :xmile/time-units "step"}
+              :xmile/variables {}}
+        with-stocks
+        (reduce
+         (fn [result [name {:keys [initial inflows outflows units]}]]
+           (let [wire-name (xmile-name name)]
+             (assoc-in result [:xmile/variables wire-name]
+                       {:xmile/kind :stock :xmile/name wire-name
+                        :xmile/eqn (str (double (get state name initial)))
+                        :xmile/inflows (set (map xmile-name inflows))
+                        :xmile/outflows (set (map xmile-name outflows))
+                        :xmile/stock-type :stock :xmile/units units})))
+         base (:world-model/stocks model))
+        with-variables
+        (reduce
+         (fn [result [name {:keys [kind equation units]}]]
+           (let [wire-name (xmile-name name)]
+             (assoc-in result [:xmile/variables wire-name]
+                       {:xmile/kind kind :xmile/name wire-name
+                        :xmile/eqn (expression->xmile equation)
+                        :xmile/units units})))
+         with-stocks (:world-model/variables model))]
+    (reduce
+     (fn [result [name {:keys [value units]}]]
+       (let [wire-name (xmile-name name)]
+         (assoc-in result [:xmile/variables wire-name]
+                   {:xmile/kind :aux :xmile/name wire-name
+                    :xmile/eqn (str (double (get action name value)))
+                    :xmile/units units})))
+     with-variables (:world-model/parameters model))))
+
+(defn to-xmile [model]
+  (validate model)
+  (let [doc {:xmile/header
+             {:xmile/vendor "kotoba-lang"
+              :xmile/product {:xmile/name "tamaki" :xmile/version "1"}
+              :xmile/name (:world-model/id model)}
+             :xmile/models [(canonical-model model nil nil)]}
+        problems (runtime-call 'document-validation-errors doc)]
+    (when (seq problems)
+      (fail! "Canonical XMILE document validation failed" {:problems problems}))
+    (runtime-call 'emit-string doc)))
+
+(defn write-xmile! [model path]
+  (let [file (io/file path)]
+    (when-let [parent (.getParentFile file)] (.mkdirs parent))
+    (spit file (to-xmile model))
+    (.getCanonicalPath file)))
