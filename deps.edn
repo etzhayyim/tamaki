@@ -14,7 +14,7 @@
          :git/sha "188b3062959bebc1254c4d6079112233f0f260b6"}
         io.github.kotoba-lang/agent
         {:git/url "https://github.com/kotoba-lang/agent.git"
-         :git/sha "12d100bed062f4461b55266b79b7dc9310a41ea1"}
+         :git/sha "d96c50cfdea4d27fecbb3e05203038f908ed6a0c"}
         io.github.kotoba-lang/org-oasis-open-xmile
         {:git/url "https://github.com/kotoba-lang/org-oasis-open-xmile.git"
          :git/sha "9a703008784b2c46d2f7289d78438c450b47d906"}
