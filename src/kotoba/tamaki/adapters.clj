@@ -32,13 +32,28 @@
 
 (defn local-command
   [run]
-  (let [binary (str (io/file (sibling "kotoba-code") "bin" "kotoba-code"))
-        base [binary]
-        model (:agent.run/model run)]
-    (cond-> (conj base
-                  (:agent.run/goal run)
-                  (:agent.run/project run))
-      model (conj model))))
+  (let [model (:agent.run/model run)]
+    (if (or (= "codex" (:agent.run/runner run))
+            (str/starts-with? (or model "") "codex:"))
+      (let [requested-model (some-> model (subs (count "codex:")) str/trim)
+            boundary (str
+                      "You are operating for a Cloud Itonami bot in an isolated git worktree. "
+                      "Work only inside this worktree. Do not fetch, push, merge, rebase, reset, "
+                      "rewrite history, change repository visibility, read credentials, or contact "
+                      "external services. Make one bounded reviewable change for the goal below, "
+                      "run the relevant local tests, and if they pass commit only your scoped files "
+                      "with a descriptive commit message. Leave failures visible and do not claim success.\n\n"
+                      (:agent.run/goal run))]
+        (cond-> ["codex" "exec" "--approve-for-me" "--ephemeral"
+                 "-C" (:agent.run/project run)]
+          (seq requested-model) (into ["-m" requested-model])
+          true (conj boundary)))
+      (let [binary (str (io/file (sibling "kotoba-code") "bin" "kotoba-code"))
+            base [binary]]
+        (cond-> (conj base
+                      (:agent.run/goal run)
+                      (:agent.run/project run))
+          model (conj model))))))
 
 (defn local-resume-command
   [run]
@@ -115,6 +130,7 @@
      :nbb {:ok? (command-exists? "nbb")}
      ;; bin/tamaki resolves deps.edn via `clojure -Spath` before launching bb.
      :clojure {:ok? (command-exists? "clojure")}
+     :codex {:ok? (command-exists? "codex")}
      :capability-contract {:ok? (shared-contract-ready?)
                            :namespaces required-shared-namespaces}
      :kotoba-code {:ok? (executable? kc) :path kc}
@@ -123,17 +139,22 @@
      :event-store (store/readiness)}))
 
 (defn ready-for?
-  [mode report]
-  (every? :ok?
-          (map report
-               (case mode
-                 :fleet [:nbb :kotoba-fleet :murakumo]
-                 ;; :external runs a deterministic command the caller supplies
-                 ;; (an ingest tick, a scheduled report). It needs the durable
-                 ;; event store and nothing else -- gating it on kotoba-code
-                 ;; would demand a model that is not in the loop.
-                 :external [:tamaki :event-store]
-                 [:bb :kotoba-code]))))
+  ([mode report] (ready-for? mode report nil))
+  ([mode report runner-kind]
+   (every? :ok?
+           (map report
+                (case mode
+                  :fleet [:nbb :kotoba-fleet :murakumo]
+                  ;; :external runs a deterministic command the caller supplies
+                  ;; (an ingest tick, a scheduled report). It needs the durable
+                  ;; event store and nothing else -- gating it on kotoba-code
+                  ;; would demand a model that is not in the loop.
+                  :external [:tamaki :event-store]
+                  :local (if (and (= :codex runner-kind)
+                                  (contains? report :codex))
+                           [:codex]
+                           [:bb :kotoba-code])
+                  [:bb :kotoba-code])))))
 
 (def ^:dynamic *process-env* {})
 (def ^:dynamic *unset-process-env* [])
