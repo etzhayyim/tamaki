@@ -188,6 +188,10 @@
               (.remove (.environment pb) key))
           _ (when cwd (.directory pb (io/file cwd)))
           p (.start pb)
+          ;; Model CLIs treat an inherited pipe as an invitation to read more
+          ;; prompt text. Tamaki never supplies interactive stdin, so leaving
+          ;; this stream open stalls `codex exec` forever before inference.
+          _ (.close (.getOutputStream p))
           tracking? (atom true)
           descendants (atom #{})
           tracker
