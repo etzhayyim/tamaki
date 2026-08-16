@@ -2,7 +2,8 @@
   "Command adapters for the existing Kotoba runtimes."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [kotoba.tamaki.store :as store]))
+            [kotoba.tamaki.store :as store])
+  (:import [java.util.concurrent TimeUnit]))
 
 (defn workspace-root []
   (or (System/getenv "TAMAKI_WORKSPACE_ROOT")
@@ -208,7 +209,15 @@
                 (println line)
                 (*activity-fn* line))))]
       (try
-        (let [exit (.waitFor p)]
+        (let [timeout-ms (some-> (get *process-env* "KC_RUN_TIMEOUT_MS")
+                                 parse-long)
+              finished? (if (and timeout-ms (pos? timeout-ms))
+                          (.waitFor p timeout-ms TimeUnit/MILLISECONDS)
+                          (do (.waitFor p) true))
+              _ (when-not finished?
+                  (swap! descendants into (process-descendants p))
+                  (stop-process-handles! (conj @descendants (.toHandle p))))
+              exit (if finished? (.exitValue p) 124)]
           ;; AgentRun subprocesses are bounded cells. Backend grandchildren
           ;; must not survive a timed-out or failed kotoba-code parent as
           ;; orphaned token consumers.
