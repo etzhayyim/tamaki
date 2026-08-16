@@ -1399,7 +1399,7 @@
   (let [report (adapters/readiness)
         mode (:agent.run/mode run)
         runner (when-let [id (:agent.run/runner run)] (runners/profile id))]
-    (when-not (adapters/ready-for? mode report)
+    (when-not (adapters/ready-for? mode report (:kind runner))
       (throw (ex-info "Runtime is not ready" {:mode mode :doctor report})))
     (let [leased (model/transition run :leased (now)
                                    {:agent.run/worker

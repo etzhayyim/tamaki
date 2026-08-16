@@ -36,6 +36,29 @@
     (is (= ["--resume" "/tmp/project" "codex:"]
            (subvec (vec command) 1)))))
 
+(deftest codex-local-runner-uses-isolated-subscription-cli
+  (let [run (assoc (model/agent-run {:goal "fix one thing"
+                                      :project "/tmp/project"
+                                      :model "codex:gpt-5.6-sol"}
+                                     1)
+                   :agent.run/runner "codex")
+        command (adapters/local-command run)]
+    (is (= ["codex" "exec" "--approve-for-me" "--ephemeral"
+            "-C" "/tmp/project" "-m" "gpt-5.6-sol"]
+           (subvec (vec command) 0 8)))
+    (is (str/includes? (last command) "isolated git worktree"))
+    (is (str/includes? (last command) "commit only your scoped files"))
+    (is (str/includes? (last command) "fix one thing"))))
+
+(deftest codex-readiness-does-not-require-kotoba-code
+  (is (true? (adapters/ready-for? :local
+                                  {:codex {:ok? true}
+                                   :kotoba-code {:ok? false}}
+                                  :codex)))
+  (is (false? (adapters/ready-for? :local
+                                   {:codex {:ok? false}}
+                                   :codex))))
+
 (deftest command-existence-treats-input-as-data
   (is (true? (adapters/command-exists? "sh")))
   (is (false? (adapters/command-exists?
