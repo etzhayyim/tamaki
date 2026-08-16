@@ -77,6 +77,12 @@
 (deftest noninteractive-runner-receives-stdin-eof
   (is (zero? (adapters/execute! ["/bin/sh" "-c" "read value; test $? -ne 0"]))))
 
+(deftest runner-process-is-killed-at-its-durable-deadline
+  (let [started (System/nanoTime)]
+    (binding [adapters/*process-env* {"KC_RUN_TIMEOUT_MS" "50"}]
+      (is (= 124 (adapters/execute! ["/bin/sh" "-c" "sleep 5"]))))
+    (is (< (/ (- (System/nanoTime) started) 1000000.0) 2000))))
+
 (deftest runner-can-remove-inherited-authentication
   ;; Assert through the child exit code. Never print the inherited environment:
   ;; a test log is still an exfiltration surface for unrelated credentials.
