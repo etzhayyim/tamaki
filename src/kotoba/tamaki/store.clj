@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.store
   "Append-only AgentRun events on local disk or the shared Kotobase Datom plane."
-  (:require [cheshire.core :as json]
+  (:require [json.compat :as json]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str])

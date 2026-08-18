@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.store-test
-  (:require [cheshire.core :as json]
+  (:require [json.compat :as json]
             [clojure.test :refer [deftest is]]
             [kotoba.tamaki.store :as store]))
 
