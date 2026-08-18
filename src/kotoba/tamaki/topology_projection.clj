@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.topology-projection
   "Import forge issues into canonical EDN, then project EDN to Radicle."
-  (:require [cheshire.core :as json]
+  (:require [json.compat :as json]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
