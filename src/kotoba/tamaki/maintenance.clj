@@ -59,6 +59,23 @@
        :maintenance/run (:agent.run/id run)
        :maintenance/reason :independent-repository}
 
+      ;; No `.git` at all -- neither the worktree's file nor a repository's
+      ;; directory. Git asked about such a path does not say "not a
+      ;; repository": it walks UP and answers for the first repository it
+      ;; finds, so the `status --untracked-files=all` below would walk that
+      ;; enclosing tree instead. Measured 2026-08-23: 14 generated
+      ;; directories under orgs/kotoba-lang/ had lost their `.git` when the
+      ;; source repository moved, the enclosing repository was the 4,000-
+      ;; project superproject, and every 60-second cleanup lane held its
+      ;; index lock for minutes while walking it. Nothing here can say what
+      ;; the directory is; it is left alone and named.
+      (not (.exists (io/file project ".git")))
+      {:maintenance/disposition :preserve
+       :maintenance/source source
+       :maintenance/project project
+       :maintenance/run (:agent.run/id run)
+       :maintenance/reason :not-a-worktree}
+
       (not terminal?)
       {:maintenance/disposition :active
        :maintenance/reason :run-not-terminal}

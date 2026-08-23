@@ -41,9 +41,14 @@
                      :agent.run/source-project (.getPath source)
                      :agent.run/project (.getPath project))]
       (.mkdir project)
-      (is (= :preserve
-             (:maintenance/disposition
-              (maintenance/inspect-run run 600002)))))))
+      ;; A linked worktree carries a `.git` FILE; without it the inspection
+      ;; stops at :not-a-worktree and this test would pass for the wrong
+      ;; reason. The reason is asserted so that cannot happen silently.
+      (spit (java.io.File. project ".git")
+            (str "gitdir: " (.getPath source) "/.git/worktrees/x\n"))
+      (let [result (maintenance/inspect-run run 600002)]
+        (is (= :preserve (:maintenance/disposition result)))
+        (is (= :dirty-worktree (:maintenance/reason result)))))))
 
 (deftest apply-removes-only-explicit-remove-dispositions
   (let [calls (atom [])]
@@ -79,6 +84,32 @@
                 600002)]
     (is (= :preserve (:maintenance/disposition result)))
     (is (= :independent-repository (:maintenance/reason result)))))
+
+(deftest a-directory-with-no-git-entry-is-never-asked-about
+  ;; Git resolves a path with no .git by walking up to the first repository
+  ;; it finds, so `status` there is a status of the ENCLOSING tree. The
+  ;; process seam is armed to fail the test if any git command is issued.
+  (let [source (.toFile
+                (java.nio.file.Files/createTempDirectory
+                 "tamaki-maint-no-git"
+                 (make-array java.nio.file.attribute.FileAttribute 0)))
+        project (java.io.File. (.getParentFile source)
+                               (str "." (.getName source)
+                                    "-tamaki-actor-grok-59"))
+        _ (.mkdirs project)
+        calls (atom [])
+        result (binding [delivery/*process-fn*
+                         (fn [argv cwd]
+                           (swap! calls conj [argv cwd])
+                           {:exit 0 :out "" :err ""})]
+                 (maintenance/inspect-run
+                  (assoc terminal-run
+                         :agent.run/source-project (.getPath source)
+                         :agent.run/project (.getPath project))
+                  600002))]
+    (is (= :preserve (:maintenance/disposition result)))
+    (is (= :not-a-worktree (:maintenance/reason result)))
+    (is (empty? @calls) "no git command was issued for a path git would resolve upward")))
 
 (deftest generated-output-with-missing-source-is-preserved
   (let [parent (.toFile
@@ -125,6 +156,8 @@
                    :agent.run/source-project (.getPath source)
                    :agent.run/project (.getPath project))]
     (.mkdir project)
+    (spit (io/file project ".git")
+          (str "gitdir: " (.getPath source) "/.git/worktrees/x\n"))
     (with-redefs [delivery/*process-fn*
                   (fn [argv _]
                     (cond
