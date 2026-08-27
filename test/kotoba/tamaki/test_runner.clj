@@ -7,6 +7,7 @@
             [kotoba.tamaki.capability-test]
             [kotoba.tamaki.bridge-test]
             [kotoba.tamaki.adapters-test]
+            [kotoba.tamaki.adr-numbering-test]
             [kotoba.tamaki.cli-test]
             [kotoba.tamaki.communication-test]
             [kotoba.tamaki.content-test]
@@ -50,6 +51,7 @@
                                'kotoba.tamaki.capability-test
                                'kotoba.tamaki.bridge-test
                                'kotoba.tamaki.adapters-test
+                               'kotoba.tamaki.adr-numbering-test
                                'kotoba.tamaki.cli-test
                                'kotoba.tamaki.communication-test
                                'kotoba.tamaki.content-test

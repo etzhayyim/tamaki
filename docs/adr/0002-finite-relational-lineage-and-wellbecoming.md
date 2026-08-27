@@ -1,5 +1,7 @@
 # ADR-0002: Finite relational lineage and wellbecoming
 
+> **ADR number collision:** `docs/adr/0002-lifecycle-maintenance-and-evidence-preserving-cleanup.md` also claims number 0002 ("Lifecycle maintenance and evidence-preserving Git cleanup"). Cite this decision by full filename or title, not by the bare number "ADR-0002".
+
 - Status: Accepted
 - Date: 2026-07-26
 - Decision owners: Tamaki maintainers and participating humans
