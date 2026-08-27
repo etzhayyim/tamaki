@@ -313,7 +313,7 @@ capabilities never become host authority implicitly. A Wasm ActorSpec must
 declare the realized subset, exact `actor:host` imports, authority grants,
 bounded limits, and per-effect HIL policy. Tamaki validates before placement;
 Kototama independently validates the minimal envelope before creating
-`HostCaps`. See [ADR 0005](docs/adr/0005-kototama-wasm-capability-contract.md).
+`HostCaps`. See [ADR 0005 "Kototama Wasm capability contract before execution"](docs/adr/0005-kototama-wasm-capability-contract.md).
 
 ```sh
 tamaki capability validate private-actor.edn
@@ -703,4 +703,4 @@ bin/tamaki result status
 
 The Observatory projects evaluation debt, validated value, and regression debt
 from the same durable event stream. See
-[ADR-0005](docs/adr/0005-evidence-gated-result-evaluation.md).
+[ADR-0005 "Evidence-gated result evaluation"](docs/adr/0005-evidence-gated-result-evaluation.md).

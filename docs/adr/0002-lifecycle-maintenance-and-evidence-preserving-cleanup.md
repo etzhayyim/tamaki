@@ -1,5 +1,7 @@
 # ADR 0002: Lifecycle maintenance and evidence-preserving Git cleanup
 
+> **ADR number collision:** `docs/adr/0002-finite-relational-lineage-and-wellbecoming.md` also claims number 0002 ("Finite relational lineage and wellbecoming"). Cite this decision by full filename or title, not by the bare number "ADR 0002".
+
 Status: accepted
 
 ## Context

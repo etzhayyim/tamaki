@@ -1,5 +1,7 @@
 # ADR 0005: Kototama Wasm capability contract before execution
 
+> **ADR number collision:** `docs/adr/0005-evidence-gated-result-evaluation.md` also claims number 0005 ("Evidence-gated result evaluation"). Cite this decision by full filename or title, not by the bare number "ADR 0005".
+
 ## Status
 
 Accepted
