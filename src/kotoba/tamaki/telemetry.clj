@@ -4,7 +4,7 @@
   Provider credentials and concrete mappings live in the local control plane."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [kotoba.lang.text :as str])
   (:import [java.time Instant LocalDate ZoneOffset]
            [java.time.format DateTimeParseException]))
 

@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.loop
   "Pure campaign state for bounded, durable self-improvement cycles."
-  (:require [kotoba.tamaki.lineage :as lineage]))
+  (:require [kotoba.lang.text] [kotoba.tamaki.lineage :as lineage]))
 
 (def terminal-cycle-kinds
   #{:loop/cycle-integrated :loop/cycle-reviewed
@@ -9,7 +9,7 @@
 (defn campaign-id
   ([now-ms] (campaign-id now-ms (str (random-uuid))))
   ([now-ms entropy]
-   (str "loop-" now-ms "-" (subs (clojure.string/replace entropy #"-" "") 0 8))))
+   (str "loop-" now-ms "-" (subs (kotoba.lang.text/replace entropy #"-" "") 0 8))))
 
 (defn campaign
   [{:keys [id objective project model runner runners max-cycles interval-ms
@@ -17,9 +17,9 @@
     :or {max-cycles 10 interval-ms 60000 max-failures 3 auto-approve false
          continuous false}}
    now-ms]
-  (when (clojure.string/blank? objective)
+  (when (kotoba.lang.text/blank? objective)
     (throw (ex-info "Loop requires a non-blank objective" {:field :objective})))
-  (when (clojure.string/blank? project)
+  (when (kotoba.lang.text/blank? project)
     (throw (ex-info "Loop requires --project PATH" {:field :project})))
   (when-not (pos? max-cycles)
     (throw (ex-info "Loop requires a positive --max-cycles"
@@ -52,11 +52,11 @@
            :tamaki.loop/failures 0
            :tamaki.loop/created-at now-ms
            :tamaki.loop/updated-at now-ms}
-    (not (clojure.string/blank? (str spec-id)))
+    (not (kotoba.lang.text/blank? (str spec-id)))
     (assoc :tamaki.loop/spec-id (str spec-id))
-    (not (clojure.string/blank? (str ao)))
+    (not (kotoba.lang.text/blank? (str ao)))
     (assoc :tamaki.loop/ao (str ao))
-    (not (clojure.string/blank? (str spec-path)))
+    (not (kotoba.lang.text/blank? (str spec-path)))
     (assoc :tamaki.loop/spec-path (str spec-path))))
 
 (defn loop-event [campaign kind now-ms data]

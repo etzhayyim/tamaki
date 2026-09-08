@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.evolution
   "Fail-closed lifecycle for Radicle-primary self-evolution candidates.
   GitHub is an optional mirror for CI, visibility, and secondary review."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def statuses
   [:proposed :implemented :tested :reviewed :canary

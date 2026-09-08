@@ -5,7 +5,7 @@
   dimension vector, gates, evidence references, rubric version, and subsequent
   production observations."
   (:require [clojure.set :as set]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def dimensions
   #{:correctness :verification :integration :measured-impact :durability

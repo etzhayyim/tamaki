@@ -2,7 +2,7 @@
   "Pure ActorSpec validation and desired-state reconciliation."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [kotoba.tamaki.capability :as capability]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.visibility :as visibility]

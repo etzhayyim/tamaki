@@ -5,7 +5,7 @@
   deterministic evaluator can select a successor and project it to XMILE."
   (:require [clojure.java.io :as io]
             [clojure.set :as set]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def operators #{:+ :- :* :/ :min :max :abs})
 (def mutation-levels #{:parameter :equation :structure})

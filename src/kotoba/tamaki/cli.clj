@@ -3,7 +3,7 @@
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.active-inference :as active-inference]
             [kotoba.tamaki.ao-fleet :as ao-fleet]

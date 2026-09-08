@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.visual
   "Screenshot and deterministic visual feedback for the Observatory loop."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [kotoba.tamaki.delivery :as delivery])
   (:import [java.util.concurrent TimeUnit]))
 
@@ -284,7 +284,7 @@
             _ (when-not (zero? (:exit ocr))
                 (throw (ex-info "Vision OCR analysis failed"
                                 {:exit (:exit ocr) :error (:err ocr)})))
-            text (str/lower-case (:out ocr))]
+            text (str/lower (:out ocr))]
         ;; Store the OCR text alongside the verdict so a :degraded finding
         ;; (e.g. "provider usage cards not visible") carries the evidence
         ;; that produced it, instead of forcing a blind re-run to diagnose.

@@ -4,7 +4,7 @@
   Provider bodies, phone numbers, addresses and credentials stay in the local
   transport. The durable topology receives only stable digests, relationships,
   consent state and outcome metadata."
-  (:require [clojure.string :as str])
+  (:require [kotoba.lang.text :as str])
   (:import [java.nio.charset StandardCharsets]
            [java.security MessageDigest]))
 

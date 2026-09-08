@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.bridge
   "Deterministic Radicle-primary / GitHub-mirror gap reconciliation."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def mirrorable-statuses #{:tested :reviewed :canary :awaiting-human})
 

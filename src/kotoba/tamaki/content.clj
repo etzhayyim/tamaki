@@ -6,7 +6,7 @@
   outside the public Tamaki repository."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def channels #{:aozora :youtube})
 (def stages #{:drafted :rendered :publish-ready :published :observed :learned})

@@ -6,7 +6,7 @@
   source, issue, or effect authority."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [kotoba.lang.text :as str])
   (:import [java.nio.channels FileChannel]
            [java.nio.file Files StandardCopyOption StandardOpenOption]
            [java.util UUID]))

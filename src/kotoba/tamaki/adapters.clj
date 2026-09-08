@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.adapters
   "Command adapters for the existing Kotoba runtimes."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [kotoba.tamaki.store :as store])
   (:import [java.util.concurrent TimeUnit]))
 

@@ -16,7 +16,7 @@
   so explicitly, so a future collision cannot pass review silently."
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def adr-dir (io/file "docs" "adr"))
 
