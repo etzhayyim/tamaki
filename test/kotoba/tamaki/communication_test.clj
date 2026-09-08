@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.communication-test
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.communication :as communication]
             [kotoba.tamaki.intelligence :as intelligence]

@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.intelligence
   "Deterministic issue graph selection and system-dynamics scoring."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def default-signals
   {:impact 0.5 :urgency 0.5 :confidence 0.7 :risk 0.2 :effort 0.5

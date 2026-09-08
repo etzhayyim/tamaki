@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.actor-test
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [clojure.test :refer [deftest is testing]]
             [kotoba.tamaki.actor :as actor]))
 

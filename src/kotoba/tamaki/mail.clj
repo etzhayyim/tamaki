@@ -3,7 +3,7 @@
 
   Tamaki never owns provider credentials. A transport adapter receives an
   approved command and must return a durable, redacted receipt."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (def read-actions #{:mail/sync :mail/search :mail/read})
 (def compose-actions #{:mail/draft})

@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.supervisor
   "Human decision and voice-intent boundary for the Tamaki supervisor."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [hil.core :as hil]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store]))

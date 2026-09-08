@@ -2,7 +2,7 @@
   "Non-secret runner profiles for concurrent subscription-backed workers."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (defn- claude-accounts []
   (->> (str/split (or (System/getenv "TAMAKI_CLAUDE_ACCOUNTS") "") #",")

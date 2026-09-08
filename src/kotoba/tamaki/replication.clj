@@ -6,7 +6,7 @@
   Murakumo nodes and counts only byte-verified copies as durable replicas."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [kotoba.lang.text :as str])
   (:import [java.io BufferedInputStream BufferedOutputStream FileInputStream
             FileOutputStream RandomAccessFile]
            [java.nio.file Files StandardCopyOption]

@@ -6,7 +6,7 @@
   authority or bypasses review/integration gates."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [kotoba.lang.text :as str])
   (:import [java.time Duration Instant]))
 
 (def fleet-version 1)

@@ -6,7 +6,7 @@
   repository may be removed. Dirty trees and unique commits are evidence, not
   garbage."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.model :as model]))
 

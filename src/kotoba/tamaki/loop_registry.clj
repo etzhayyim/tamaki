@@ -4,7 +4,7 @@
   the primary registration surface."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def loop-spec-keys
   #{:loop/id :loop/objective :loop/project :loop/runners :loop/runner

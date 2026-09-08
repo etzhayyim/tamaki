@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.delivery
   "Injectable process boundary and pure helpers for sovereign Radicle delivery."
   (:require [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def ^:dynamic *process-fn*
   (fn [argv cwd]

@@ -5,7 +5,7 @@
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [clojure.set :as set]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [kotoba.tamaki.delivery :as delivery]))
 
 (def issue-type "xyz.radicle.issue")

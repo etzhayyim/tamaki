@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.finance
   "Validated accounting observations for local dashboards."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defn- nameable?
   "True for values safe to pass to `clojure.core/name`. Keywords, strings,
