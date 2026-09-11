@@ -32,7 +32,7 @@ runtime-limit opt-ins.
 
 `kotoba-lang/kotoba-core-contracts` is the shared authority for the vocabulary,
 business-to-import realization map, effects, decisions, envelope schema, and
-supported Kototama ABI surface. `src/kotoba/tamaki/capability.cljc` is only a
+supported Kototama ABI surface. `src/kotoba/tamaki/capability.cljk` is only a
 compatibility adapter. An ABI version change requires an explicit shared
 contract migration; it is not accepted through permissive normalization.
 
