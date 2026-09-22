@@ -86,7 +86,7 @@ else
 
   loop_id="$(
     bin/tamaki "${ensure_args[@]}" |
-    kbb -M -e '(println (:tamaki.loop/id (read)))'
+    clojure -M -e '(println (:tamaki.loop/id (read)))'
   )"
 
   # Register additional EDN loops so they appear in `loop list` / campaigns.

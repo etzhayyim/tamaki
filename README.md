@@ -158,7 +158,7 @@ there is no model in the loop:
 ```sh
 bin/tamaki exec "innen record tick 2026-07-25" \
   --project /path/to/loop-innen \
-  -- kbb --backend sci --classpath "../innen/src:src:scripts" scripts/tick.cljs --depth 2
+  -- nbb --classpath "../innen/src:src:scripts" scripts/tick.cljs --depth 2
 ```
 
 Everything after `--` is the caller's own argv, run in `--project`, and recorded
@@ -337,7 +337,7 @@ bin/tamaki deliver <run-id> \
   --message "Add bounded retries"
 
 bin/tamaki review <patch-id> \
-  --run <run-id> --tests "kbb -M:test; kbb -M:test; kbb -X:test"
+  --run <run-id> --tests "bb test; clojure -M:test; clojure -X:test"
 
 # Refuses unless the review receipt exists and approval is explicit.
 bin/tamaki integrate <patch-id> \
@@ -494,7 +494,7 @@ Run Tamaki against its own checkout, then inspect the durable lifecycle:
 
 ```sh
 run_id=$(bin/tamaki submit "add one focused test and run both suites" \
-  --project "$PWD" | kbb -e '(println (:agent.run/id (read)))')
+  --project "$PWD" | bb -e '(println (:agent.run/id (read)))')
 bin/tamaki run "$run_id"
 bin/tamaki status "$run_id"
 bin/tamaki agents "$run_id"
@@ -532,8 +532,8 @@ a local-only event that the rest of the fleet cannot observe.
 ## Verify
 
 ```sh
-kbb -M:test
-kbb -M:test
+bb test
+clojure -M:test
 bin/tamaki doctor
 ```
 
@@ -616,12 +616,12 @@ After committing inside the returned worktree, advance the durable lifecycle:
 
 ```sh
 bin/tamaki evolve transition CANDIDATE :implemented --commit SHA
-bin/tamaki evolve verify CANDIDATE -- kbb -M:test
+bin/tamaki evolve verify CANDIDATE -- clojure -M:test
 bin/tamaki evolve open-patch CANDIDATE --title "evolve: active inference"
 # Optional GitHub mirror:
 bin/tamaki evolve open-pr CANDIDATE --title "evolve: active inference"
 bin/tamaki evolve transition CANDIDATE :reviewed --review-accepted true
-bin/tamaki evolve canary CANDIDATE -- kbb -M:test
+bin/tamaki evolve canary CANDIDATE -- clojure -M:test
 bin/tamaki evolve transition CANDIDATE :awaiting-human \
   --fitness-before '{:tests 68 :assertions 202 :failures 1}' \
   --fitness-after '{:tests 75 :assertions 226 :failures 0}'

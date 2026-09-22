@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# bin/gen-cljk-mirror — build a JVM-loadable .clj view of the .cljk sources.
+# kbb-cutover: keep  (this file names the old spellings on purpose)
+#
+# Why this exists: ADR-2609111500 renamed every Clojure source to `.cljk`,
+# and ADR-2609112000 rewrote every `clojure -M…` / `bb` / `nbb` invocation to
+# `kbb …`. The kbb engine (org-babashka-nbb) resolves `.cljk` on its own, but
+# it is a SCI-on-Node host with no Java classes: an `:import` of
+# `java.util.concurrent.TimeUnit` (kotoba.tamaki.adapters, .storage) dies with
+# "Unable to resolve classname" (measured 2026-09-22). The JVM route — real
+# babashka `bb` v1.12.218 (which has the classes and `require`s fine) or
+# `clojure` — probes only `.bb` / `.clj` / `.cljc` and cannot see `.cljk`.
+#
+# This script bridges exactly that gap: it mirrors `src` and `test` into
+# `.mirror` with symlinks `foo.clj -> /abs/path/foo.cljk`, so the existing
+# code loads UNCHANGED on the JVM. The mirror is pure links: no copy, no
+# second source of truth, regenerated in under a second. `.kotoba` guests are
+# not Clojure sources and are excluded.
+#
+# Usage:  bin/gen-cljk-mirror [dir ...]     (default: src test)
+#         the mirror root is ./.mirror (git-ignored)
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$ROOT"
+
+OUT=.mirror
+rm -rf "$OUT"
+mkdir -p "$OUT"
+
+if [ "$#" -eq 0 ]; then set -- src test; fi
+
+total=0
+for SRC in "$@"; do
+  [ -d "$SRC" ] || continue
+  n=0
+  while IFS= read -r f; do
+    # Never mirror a tree that shadows a stdlib namespace: src/clojure/**
+    # holds the abandoned kbb-side shim for clojure.java.io/shell (an
+    # SCI-only stand-in that references the `js` host). On the JVM route
+    # that symlink would shadow the real stdlib and break every require
+    # (measured 2026-09-23: ExceptionInInitializerError, Unable to resolve
+    # symbol: js at scripts/nbb_compat).
+    case "$f" in src/clojure/*) continue ;; esac
+    rel=${f#"$SRC"/}
+    base=${rel##*/}
+    stem=${base%.cljk}
+    sub=${rel%"/$base"}
+    if [ "$sub" = "$rel" ]; then sub=""; fi
+    dir="$OUT/$SRC"
+    [ -n "$sub" ] && dir="$dir/$sub"
+    mkdir -p "$dir"
+    ln -sf "$ROOT/$f" "$dir/$stem.clj"
+    n=$((n + 1))
+  done < <(find "$SRC" -name '*.cljk')
+  echo "mirror: $SRC -> $OUT/$SRC ($n file(s))" >&2
+  total=$((total + n))
+done
+echo "mirror: $total link(s) under $OUT" >&2

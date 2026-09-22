@@ -169,7 +169,7 @@
 
 (defn parse-args
   "A bare `--` ends option parsing: everything after it is returned verbatim as
-   `:command`, so `tamaki exec ... -- kbb --backend sci script.cljk --depth 2` passes the
+   `:command`, so `tamaki exec ... -- nbb script.cljs --depth 2` passes the
    subprocess's own flags through instead of swallowing them as tamaki options."
   [args]
   (loop [xs args positional [] options {}]

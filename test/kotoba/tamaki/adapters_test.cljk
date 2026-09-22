@@ -118,6 +118,6 @@
     (testing "bin/tamaki uses deps.edn, not a sibling-only classpath"
       (is (str/includes? script "clojure -Spath"))
       (is (not (str/includes? script "$ROOT/src:$ROOT/../hil/src"))))
-    (testing "kbb -Saliases share the fixed entrypoint and JVM suite"
+    (testing "bb tasks share the fixed entrypoint and JVM suite"
       (is (str/includes? bb-edn "bin/tamaki"))
       (is (str/includes? bb-edn "\"clojure\" \"-M:test\"")))))
