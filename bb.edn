@@ -4,4 +4,4 @@
   ;; share one pin set (hil, kotoba-core-contracts, cheshire).
   tamaki {:task (apply shell "bin/tamaki" *command-line-args*)}
   ;; Documented deterministic suite; keeps pins only in deps.edn.
-  test {:task (shell "kbb" "-M:test")}}}
+  test {:task (shell "clojure" "-M:test")}}}

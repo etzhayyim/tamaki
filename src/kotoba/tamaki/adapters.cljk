@@ -81,7 +81,7 @@
   (let [fleet (sibling "kotoba-fleet")
         cp (str (io/file fleet "src") ":"
                 (io/file fleet "hosts" "nbb"))]
-    ["kbb" "--backend" "sci" "--classpath" cp
+    ["nbb" "--classpath" cp
      (str (io/file fleet "bin" "fleet-sandbox-dispatch.cljs"))
      "--work" work-file
      "--agent" (str "tamaki-" (:agent.run/id run))
@@ -93,7 +93,7 @@
   (let [fleet (sibling "kotoba-fleet")
         cp (str (io/file fleet "src") ":"
                 (io/file fleet "hosts" "nbb"))]
-    (into ["kbb" "--backend" "sci" "--classpath" cp
+    (into ["nbb" "--classpath" cp
            (str (io/file fleet "bin" (str "fleet-" tool ".cljs")))]
           args)))
 
@@ -129,7 +129,7 @@
     {:tamaki {:ok? true}
      :bb {:ok? (command-exists? "bb")}
      :nbb {:ok? (command-exists? "nbb")}
-     ;; bin/tamaki resolves deps.edn via `kbb -Spath` before launching bb.
+     ;; bin/tamaki resolves deps.edn via `clojure -Spath` before launching bb.
      :clojure {:ok? (command-exists? "clojure")}
      :codex {:ok? (command-exists? "codex")}
      :capability-contract {:ok? (shared-contract-ready?)

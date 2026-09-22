@@ -19,17 +19,17 @@
   calibration — 36 benign domains must keep producing zero claims."
  :loop/tags #{:yabai :cti :phishing :coverage :continuous}
  ;; The loop optimises ONE measured number, not a mood:
- ;;   kbb -cp src -m yabai.methods.maturity   ->  docs/maturity.edn, 0..1000
+ ;;   bb -cp src -m yabai.methods.maturity   ->  docs/maturity.edn, 0..1000
  ;; It is deterministic (no clock, no network, no LLM) so two readings are comparable, and
  ;; it exits non-zero when a calibration floor breaks, so a supervisor can treat regression
  ;; as failure rather than as a low score. Baseline 231/1000 on 2026-07-28.
- :loop/fitness {:command "kbb -cp src -m yabai.methods.maturity"
+ :loop/fitness {:command "bb -cp src -m yabai.methods.maturity"
                 :artifact "docs/maturity.edn"
                 :key :maturity/score
                 :baseline 231
                 :invalid-when :maturity/valid-false}
  :loop/objective
- "Raise the measured maturity score (`kbb -cp src -m yabai.methods.maturity`, baseline
+ "Raise the measured maturity score (`bb -cp src -m yabai.methods.maturity`, baseline
   231/1000 on 2026-07-28) — and read its dimensions before choosing work, because the
   breakdown already says where the slack is: brand-coverage 0.20, log-coverage 0.167,
   observation-volume 0.111, infra-breadth 0.317, signal-independence 0.597.

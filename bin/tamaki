@@ -3,7 +3,7 @@ set -eu
 
 # Resolve deps.edn so git-pinned siblings (hil, kotoba-core-contracts) and
 # Maven jars (cheshire) are on the classpath. A bare
-# `kbb -cp src:../hil/src` silently drops those deps and fails at require
+# `bb -cp src:../hil/src` silently drops those deps and fails at require
 # time for kotoba.core.actor-capability after the capability extract.
 #
 # Prefer babashka for fast startup once the classpath is known; fall back
@@ -18,14 +18,14 @@ if ! command -v clojure >/dev/null 2>&1; then
   exit 127
 fi
 
-CP=$(kbb -Spath)
+CP=$(clojure -Spath)
 # The canonical XMILE text boundary uses the JVM's hardened XML parser.
 # Keep every other command on Babashka's fast path, but never make XML parser
 # availability depend on Babashka's partial javax.xml compatibility.
 if [ "${1:-}" = "world-model" ]; then
-  exec kbb -M:run "$@"
+  exec clojure -M:run "$@"
 fi
 if command -v bb >/dev/null 2>&1; then
-  exec kbb -cp "$CP" -m kotoba.tamaki.cli "$@"
+  exec bb -cp "$CP" -m kotoba.tamaki.cli "$@"
 fi
-exec kbb -M:run "$@"
+exec clojure -M:run "$@"
