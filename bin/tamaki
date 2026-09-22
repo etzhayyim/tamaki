@@ -8,6 +8,17 @@ set -eu
 #
 # Prefer babashka for fast startup once the classpath is known; fall back
 # to the JVM main when bb is unavailable.
+#
+# .cljk overlay (measured 2026-09-22): ADR-2609111500 renamed the sources to
+# `.cljk`, but `bb`/`clojure` `require` probes only `.bb .clj .cljc`, and the
+# kbb SCI-on-Node engine cannot host the app at all — kotoba.tamaki.adapters
+# :import java.util.concurrent.TimeUnit and the engine answers "Unable to
+# resolve classname". The JVM route is restored with an exact `.clj` overlay
+# (bin/gen-cljk-mirror: symlinks only, src/clojure/** excluded so the
+# abandoned kbb-side stdlib shim can never shadow the real one). Sources stay
+# `.cljk`; nothing is copied. Keep this file and its callers JVM-resolvable:
+# do NOT rewrite these `clojure`/`bb` strings to `kbb` (ADR-2609112000 is
+# reverted for tamaki; see the card comment on t_83fad0e7 for the evidence).
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
@@ -19,6 +30,12 @@ if ! command -v clojure >/dev/null 2>&1; then
 fi
 
 CP=$(clojure -Spath)
+# Refresh the .clj overlay for the JVM `require` probes (no-op when nothing
+# changed; regenerates whenever a source is newer than the mirror).
+[ -d .mirror ] || bin/gen-cljk-mirror >/dev/null
+if [ -n "$(find src test -name '*.cljk' -newer .mirror 2>/dev/null | head -1)" ]; then
+  bin/gen-cljk-mirror >/dev/null
+fi
 # The canonical XMILE text boundary uses the JVM's hardened XML parser.
 # Keep every other command on Babashka's fast path, but never make XML parser
 # availability depend on Babashka's partial javax.xml compatibility.
