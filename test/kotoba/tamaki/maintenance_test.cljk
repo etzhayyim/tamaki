@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.maintenance-test
   (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is testing]]
+            [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.maintenance :as maintenance]))
 

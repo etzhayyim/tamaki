@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.capability-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.capability :as capability]))
 

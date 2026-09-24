@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.world-model-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.world-model :as world-model]
             [xmile.validate :as xmile-validate]
             [xmile.xml :as xmile-xml]))

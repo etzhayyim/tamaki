@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.finance-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.finance :as finance]))
 
 (deftest accounting-observation-requires-a-balanced-bs

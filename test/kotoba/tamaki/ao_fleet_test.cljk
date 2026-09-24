@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.ao-fleet-test
   (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is]]
+            [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.ao-fleet :as fleet]))
 
 (def policy

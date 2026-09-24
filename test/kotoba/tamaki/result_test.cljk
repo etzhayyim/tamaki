@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.result-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.result :as result]))
 
 (deftest typed-events-project-to-source-pr-result-graph

@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.loop-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.loop :as loop]))
 
 (deftest campaign-folds-bounded-cycles

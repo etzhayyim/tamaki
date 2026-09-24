@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.model-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.model :as model]))
 
 (deftest run-id-validates-deterministic-entropy

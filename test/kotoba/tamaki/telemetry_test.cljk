@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.telemetry-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.telemetry :as telemetry]))
 
 (deftest snapshot-mapping-preserves-facts-and-freshness

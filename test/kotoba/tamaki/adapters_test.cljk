@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.adapters-test
   (:require [kotoba.lang.text :as str]
-            [clojure.test :refer [deftest is testing]]
+            [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.model :as model]))
 

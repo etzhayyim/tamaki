@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.topology-projection-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.topology-projection :as projection]))
 

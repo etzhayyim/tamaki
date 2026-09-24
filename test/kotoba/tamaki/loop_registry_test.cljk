@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.loop-registry-test
   (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is testing]]
+            [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.loop :as loop]
             [kotoba.tamaki.loop-registry :as reg]))
 

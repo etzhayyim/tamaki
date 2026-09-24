@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.active-inference-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.active-inference :as inference]))
 
 (deftest beliefs-update-with-bounded-uncertainty

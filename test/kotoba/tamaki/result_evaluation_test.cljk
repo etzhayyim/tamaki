@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.result-evaluation-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.result-evaluation :as evaluation]))
 
 (def valid-evaluation

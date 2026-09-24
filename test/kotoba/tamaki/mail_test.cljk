@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.mail-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.mail :as mail]))
 
 (deftest governed-mail-decisions
