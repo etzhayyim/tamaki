@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.runners
   "Non-secret runner profiles for concurrent subscription-backed workers."
   (:require [kotoba.lang.edn :as edn]
-            [clojure.java.io :as io]
+            [kotoba.io :as io]
             [kotoba.lang.text :as str]))
 
 (defn- claude-accounts []
@@ -28,7 +28,7 @@
         file (io/file (or (System/getenv "TAMAKI_RUNNERS_FILE")
                           (str (System/getProperty "user.home")
                                "/.config/tamaki/runners.edn")))
-        configured (if (.isFile file) (edn/read-string (slurp file)) [])]
+        configured (if (io/file? file) (edn/read-string (slurp file)) [])]
     (->> (concat defaults (claude-accounts) configured)
          (reduce (fn [result profile] (assoc result (:id profile) profile)) {})
          vals
@@ -56,19 +56,19 @@
 
 (defn worktree-path [project swarm-id runner-id]
   (let [repo (io/file project)
-        parent (.getParentFile repo)]
-    (.getAbsolutePath
+        parent (io/parent-file repo)]
+    (io/absolute-path
      (io/file parent
-              (str "." (.getName repo) "-tamaki-" swarm-id "-" runner-id)))))
+              (str "." (io/file-name repo) "-tamaki-" swarm-id "-" runner-id)))))
 
 (defn available-worktree-path [project swarm-id runner-id]
   (let [base (worktree-path project swarm-id runner-id)]
-    (if-not (.exists (io/file base))
+    (if-not (io/exists? (io/file base))
       base
       (first
        (for [suffix (range 2 10000)
              :let [candidate (str base "-" suffix)]
-             :when (not (.exists (io/file candidate)))]
+             :when (not (io/exists? (io/file candidate)))]
          candidate)))))
 
 (defn prepare-worktree! [project swarm-id runner-id]
@@ -93,7 +93,7 @@
   (let [configured (:agent.run/project run)
         source (or (:agent.run/source-project run) configured)]
     (if (and (:agent.run/source-project run)
-             (.isDirectory (io/file configured)))
+             (io/directory? (io/file configured)))
       configured
       (prepare-worktree!
        source actor-token

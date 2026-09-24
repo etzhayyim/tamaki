@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.actor
   "Pure ActorSpec validation and desired-state reconciliation."
   (:require [kotoba.lang.edn :as edn]
-            [clojure.java.io :as io]
+            [kotoba.io :as io]
             [kotoba.lang.text :as str]
             [kotoba.tamaki.capability :as capability]
             [kotoba.tamaki.model :as model]
@@ -50,25 +50,25 @@
 
 (defn read-spec [path]
   (let [file (io/file path)]
-    (when-not (.isFile file)
+    (when-not (io/file? file)
       (throw (ex-info "ActorSpec file not found" {:path path})))
     (let [spec (edn/read-string (slurp file))
           project (:actor/project spec)
           targets (:actor/business-targets spec)
           topology (:actor/issue-topology-file spec)
-          parent (.getParentFile (.getCanonicalFile file))]
+          parent (io/parent-file (io/canonical-file file))]
       ;; Actor specs are often portable and use ".". Resolve it at the
       ;; operator boundary so worktree naming never creates a child checkout
       ;; inside the canonical repository.
       (validate-spec
        (cond-> spec
          project (assoc :actor/project
-                        (.getCanonicalPath (io/file project)))
+                        (io/canonical-path (io/file project)))
          targets (assoc :actor/business-targets
-                        (.getCanonicalPath
+                        (io/canonical-path
                          (io/file parent targets)))
          topology (assoc :actor/issue-topology-file
-                         (.getCanonicalPath
+                         (io/canonical-path
                           (io/file parent topology))))))))
 
 (defn read-issue-topology
@@ -76,7 +76,7 @@
   [spec]
   (when-let [path (:actor/issue-topology-file spec)]
     (let [file (io/file path)]
-      (when-not (.isFile file)
+      (when-not (io/file? file)
         (throw (ex-info "Canonical issue topology file not found"
                         {:actor/id (:actor/id spec) :path path})))
       (edn/read-string (slurp file)))))

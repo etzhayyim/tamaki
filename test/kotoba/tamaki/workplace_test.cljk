@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.workplace-test
-  (:require [kotoba.lang.edn :as edn]
+  (:require [kotoba.io :as kio] [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.workplace :as workplace]))
@@ -67,10 +67,8 @@
    (slurp (io/file (workplace/receipt-directory root) (str id ".edn")))))
 
 (deftest workplace-consumer-requires-approval-and-dispatches-once
-  (let [root (.toFile
-              (java.nio.file.Files/createTempDirectory
-               "tamaki-workplace"
-               (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+               "tamaki-workplace")
         calls (atom [])
         objective (envelope "intent-objective" :intent/submit 100
                             {:type "objective" :summary "Improve coverage"})
@@ -122,10 +120,8 @@
     (is (= ["intent-objective"] @calls))))
 
 (deftest workplace-consumer-fails-closed-at-each-local-gate
-  (let [root (.toFile
-              (java.nio.file.Files/createTempDirectory
-               "tamaki-workplace-gates"
-               (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+               "tamaki-workplace-gates")
         stop (envelope "intent-stop" :stop/request 100
                        {:type "stop" :summary "Governed stop"})
         calls (atom 0)]

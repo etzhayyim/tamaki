@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.store-test
-  (:require [json.compat :as json]
+  (:require [kotoba.io :as kio] [json.compat :as json]
             [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.store :as store]))
 
@@ -42,9 +42,8 @@
                            config {:tamaki.event/id "e1"})))))
 
 (deftest federated-store-commits-locally-and-retries-replication
-  (let [root (.toFile (java.nio.file.Files/createTempDirectory
-                       "tamaki-federated-store"
-                       (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+                       "tamaki-federated-store")
         event {:tamaki.event/id "e1" :tamaki.event/run "r1"
                :tamaki.event/at 1}]
     (store/append-federated-event! root event)
@@ -71,26 +70,23 @@
            (store/readiness)))))
 
 (deftest local-read-recovers-from-an-incomplete-tail
-  (let [root (.toFile (java.nio.file.Files/createTempDirectory
-                       "tamaki-store-test"
-                       (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+                       "tamaki-store-test")
         event {:tamaki.event/id "e1" :tamaki.event/at 1}]
     (spit (store/event-file root) (str (pr-str event) "\n{:incomplete"))
     (is (= [event] (store/read-local-events root)))))
 
 (deftest local-read-rejects-corruption-before-the-tail
-  (let [root (.toFile (java.nio.file.Files/createTempDirectory
-                       "tamaki-store-test"
-                       (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+                       "tamaki-store-test")
         event {:tamaki.event/id "e1" :tamaki.event/at 1}]
     (spit (store/event-file root)
           (str "{:corrupt\n" (pr-str event) "\n"))
     (is (thrown? Exception (store/read-local-events root)))))
 
 (deftest local-read-rejects-newline-terminated-corrupt-tail
-  (let [root (.toFile (java.nio.file.Files/createTempDirectory
-                       "tamaki-store-test"
-                       (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+                       "tamaki-store-test")
         event {:tamaki.event/id "e1" :tamaki.event/at 1}]
     (spit (store/event-file root)
           (str (pr-str event) "\n{:corrupt\n"))

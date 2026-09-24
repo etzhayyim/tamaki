@@ -3,8 +3,8 @@
   (:require [json.compat :as json]
             [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.pprint :as pprint]
-            [clojure.set :as set]
+            [kotoba.pprint :as pprint]
+            [kotoba.lang.coll :as set]
             [kotoba.lang.text :as str]
             [kotoba.tamaki.delivery :as delivery]))
 

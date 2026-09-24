@@ -1,12 +1,11 @@
 (ns kotoba.tamaki.storage-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.storage :as storage]))
 
 (defn temp-dir [prefix]
-  (.toFile
-   (java.nio.file.Files/createTempDirectory
-    prefix (make-array java.nio.file.attribute.FileAttribute 0))))
+  (kio/temp-dir
+    prefix))
 
 (defn policy-for [root candidate]
   {:storage.policy/version 1

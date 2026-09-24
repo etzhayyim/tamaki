@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.runners-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.io :as kio] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.runners :as runners]))
 
 (deftest built-in-runner-pool-is-explicit-and-non-secret
@@ -16,10 +16,8 @@
             (runners/worktree-path "/tmp/repo" "s1" "claude-b"))))
 
 (deftest an-existing-generated-path-does-not-block-a-new-run
-  (let [parent (.toFile
-                (java.nio.file.Files/createTempDirectory
-                 "tamaki-runner-path"
-                 (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [parent (kio/temp-dir
+                 "tamaki-runner-path")
         repo (java.io.File. parent "repo")
         base (runners/worktree-path (.getPath repo) "actor" "codex")]
     (.mkdirs repo)
@@ -29,10 +27,8 @@
             (.getPath repo) "actor" "codex")))))
 
 (deftest configured-run-reuses-its-existing-isolated-worktree
-  (let [worktree (.toFile
-                  (java.nio.file.Files/createTempDirectory
-                   "tamaki-existing-worktree"
-                   (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [worktree (kio/temp-dir
+                   "tamaki-existing-worktree")
         run {:agent.run/project (.getPath worktree)
              :agent.run/source-project "/source/repo"
              :agent.run/runner "codex"

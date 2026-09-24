@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.cli-test
-  (:require [kotoba.lang.edn :as edn]
+  (:require [kotoba.io :as kio] [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.adapters :as adapters]
@@ -15,9 +15,8 @@
    :kotoba-code {:ok? true}})
 
 (defn temp-root []
-  (str (java.nio.file.Files/createTempDirectory
-        "tamaki-cli-test-"
-        (make-array java.nio.file.attribute.FileAttribute 0))))
+  (str (kio/temp-dir
+        "tamaki-cli-test-")))
 
 (defn call [args]
   (let [out (java.io.StringWriter.)]

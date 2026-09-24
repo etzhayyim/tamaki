@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.family-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.io :as kio] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.family :as family]))
 
 (def spec
@@ -43,9 +43,8 @@
         42))))
 
 (deftest family-registry-round-trips-as-private-local-state
-  (let [root (str (java.nio.file.Files/createTempDirectory
-                   "tamaki-family-test-"
-                   (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (str (kio/temp-dir
+                   "tamaki-family-test-"))
         registry (family/projection spec repositories 42)]
     (family/write-registry! root registry)
     (is (= registry (family/read-registry root)))))
