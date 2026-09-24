@@ -4,7 +4,7 @@
   The family registry says what exists. This controller decides which AOs
   deserve scarce agent capacity now; it never grants cross-repository
   authority or bypasses review/integration gates."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.time Duration Instant]))

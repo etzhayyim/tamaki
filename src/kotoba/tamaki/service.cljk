@@ -4,7 +4,7 @@
   It turns measured business, support, and reliability gaps into a local,
   canonical issue topology. It never reads message bodies and never performs
   an external side effect."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.nio.file Files StandardCopyOption]))

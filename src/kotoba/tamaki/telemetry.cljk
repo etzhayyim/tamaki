@@ -2,7 +2,7 @@
   "Pure conversion of provider snapshots into Tamaki business observations.
 
   Provider credentials and concrete mappings live in the local control plane."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.time Instant LocalDate ZoneOffset]

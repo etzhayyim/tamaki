@@ -4,7 +4,7 @@
   Kotobase remains the queryable projection. This namespace copies an
   immutable, age-encrypted snapshot of the local authority log to independent
   Murakumo nodes and counts only byte-verified copies as durable replicas."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.io BufferedInputStream BufferedOutputStream FileInputStream

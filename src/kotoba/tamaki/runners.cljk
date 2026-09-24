@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.runners
   "Non-secret runner profiles for concurrent subscription-backed workers."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str]))
 
