@@ -4,7 +4,7 @@
   Scores are projections, not ground truth. The durable facts remain the
   dimension vector, gates, evidence references, rubric version, and subsequent
   production observations."
-  (:require [clojure.set :as set]
+  (:require [kotoba.lang.coll :as set]
             [kotoba.lang.text :as str]))
 
 (def dimensions

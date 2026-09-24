@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.replication-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as io]
             [kotoba.lang.text :as str]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.replication :as replication]))
@@ -48,25 +48,25 @@
                :replication/at 900
                :replication/durable-replicas 3}]
     (try
-      (.mkdirs receipts)
+      (io/mkdirs receipts)
       (spit (io/file receipts "900.edn") (pr-str prior))
-      (let [result (replication/reconcile! (.getPath root) config 1000)]
+      (let [result (replication/reconcile! (io/path root) config 1000)]
         (is (= :not-due (:replication/status result)))
         (is (= 1900 (:replication/next-at result)))
         (is (= 3 (:replication/durable-replicas result)))
         (is (= 900 (:replication/at result))))
       (finally
-        (doseq [file (reverse (file-seq root))]
-          (.delete file))))))
+        (doseq [file (reverse (io/file-seq root))]
+          (io/delete file))))))
 
 (deftest observation-update-preserves-comments
   (let [file (io/file (System/getProperty "java.io.tmpdir")
                       (str "tamaki-observation-" (random-uuid) ".edn"))]
     (try
       (spit file "{;; evidence\n :durable-replicas 1}\n")
-      (replication/update-observation! (.getPath file) 4)
+      (replication/update-observation! (io/path file) 4)
       (let [updated (slurp file)]
         (is (str/includes? updated ";; evidence"))
         (is (str/includes? updated ":durable-replicas 4")))
       (finally
-        (.delete file)))))
+        (io/delete file)))))

@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.loop-registry-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.loop :as loop]
             [kotoba.tamaki.loop-registry :as reg]))
@@ -55,9 +55,8 @@
     (is (= ["codex" "grok"] (:loop/runners spec)))))
 
 (deftest workspace-env-resolves-relative-project
-  (let [root (str (java.nio.file.Files/createTempDirectory
-                   "tamaki-ws-"
-                   (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (str (kio/temp-dir
+                   "tamaki-ws-"))
         child (io/file root "orgs" "kotoba-lang" "toshokan")]
     (.mkdirs child)
     (with-redefs [reg/env (fn
@@ -96,9 +95,8 @@
     (is (false? (reg/compatible-campaign? spec other)))))
 
 (deftest discover-skips-example-and-targets-names
-  (let [dir (str (java.nio.file.Files/createTempDirectory
-                  "tamaki-loops-"
-                  (make-array java.nio.file.attribute.FileAttribute 0)))]
+  (let [dir (str (kio/temp-dir
+                  "tamaki-loops-"))]
     (spit (io/file dir "good.edn")
           (pr-str {:loop/id :a/b
                    :loop/objective "o"

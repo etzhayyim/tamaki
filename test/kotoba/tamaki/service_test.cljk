@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.service-test
-  (:require [kotoba.lang.edn :as edn]
+  (:require [kotoba.io :as kio] [kotoba.lang.edn :as edn]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.service :as service]))
 
@@ -59,11 +59,10 @@
            (get-in emitted [:tamaki.event/data :service/id])))))
 
 (deftest topology-write-is-readable-and-stable
-  (let [dir (.toFile
-             (java.nio.file.Files/createTempDirectory
-              "tamaki-service-" (make-array java.nio.file.attribute.FileAttribute 0)))
-        file (java.io.File. dir "topology.edn")
+  (let [dir (kio/temp-dir
+              "tamaki-service-")
+        file (kio/file dir "topology.edn")
         topology (service/topology
                   spec {:business/status :unobserved :business/kpis {}} 3)]
-    (service/write-topology! (.getPath file) topology)
+    (service/write-topology! (kio/path file) topology)
     (is (= topology (edn/read-string (slurp file))))))

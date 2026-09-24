@@ -5,7 +5,7 @@
   conflict-free worktree whose HEAD is already reachable from the canonical
   repository may be removed. Dirty trees and unique commits are evidence, not
   garbage."
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as io]
             [kotoba.lang.text :as str]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.model :as model]))
@@ -15,12 +15,12 @@
 
 (defn generated-worktree? [source project]
   (when (and source project)
-    (let [source-file (.getCanonicalFile (io/file source))
-          project-file (.getCanonicalFile (io/file project))
-          prefix (str "." (.getName source-file) "-tamaki-")]
+    (let [source-file (io/canonical-file (io/file source))
+          project-file (io/canonical-file (io/file project))
+          prefix (str "." (io/file-name source-file) "-tamaki-")]
       (and (not= source-file project-file)
-           (= (.getParentFile source-file) (.getParentFile project-file))
-           (str/starts-with? (.getName project-file) prefix)))))
+           (= (io/parent-file source-file) (io/parent-file project-file))
+           (str/starts-with? (io/file-name project-file) prefix)))))
 
 (defn- command [argv cwd]
   (delivery/execute! argv cwd))
@@ -37,11 +37,11 @@
       {:maintenance/disposition :ignored
        :maintenance/reason :not-generated-worktree}
 
-      (not (.isDirectory (io/file project)))
+      (not (io/directory? (io/file project)))
       {:maintenance/disposition :stale-registration
        :maintenance/reason :worktree-missing}
 
-      (not (.isDirectory (io/file source)))
+      (not (io/directory? (io/file source)))
       {:maintenance/disposition :preserve
        :maintenance/source source
        :maintenance/project project
@@ -52,7 +52,7 @@
       ;; repository. A directory here is an independent repository that merely
       ;; shares Tamaki's generated naming convention; never remove it through
       ;; the source repository's worktree command.
-      (.isDirectory (io/file project ".git"))
+      (io/directory? (io/file project ".git"))
       {:maintenance/disposition :preserve
        :maintenance/source source
        :maintenance/project project
@@ -69,7 +69,7 @@
       ;; project superproject, and every 60-second cleanup lane held its
       ;; index lock for minutes while walking it. Nothing here can say what
       ;; the directory is; it is left alone and named.
-      (not (.exists (io/file project ".git")))
+      (not (io/exists? (io/file project ".git")))
       {:maintenance/disposition :preserve
        :maintenance/source source
        :maintenance/project project
@@ -135,7 +135,7 @@
             :maintenance/reason :clean-and-reachable}))))))
 
 (defn inspect-source-conflict [source]
-  (when (and source (.isDirectory (io/file source)))
+  (when (and source (io/directory? (io/file source)))
     (let [result (command ["git" "-C" source "diff" "--name-only"
                            "--diff-filter=U"] source)
           paths (->> (str/split-lines (:out result))
@@ -156,12 +156,12 @@
          :maintenance/reason :canonical-unmerged-paths
          :maintenance/conflicts paths}
 
-        (.isFile lock)
+        (io/file? lock)
         {:maintenance/disposition :conflict
          :maintenance/project source
          :maintenance/source source
          :maintenance/reason :canonical-index-lock
-         :maintenance/conflicts [(.getAbsolutePath lock)]}
+         :maintenance/conflicts [(io/absolute-path lock)]}
 
         :else nil))))
 

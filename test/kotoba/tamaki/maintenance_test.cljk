@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.maintenance-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.delivery :as delivery]
             [kotoba.tamaki.maintenance :as maintenance]))
@@ -30,10 +30,8 @@
                     :else {:exit 0 :out "abc\n" :err ""}))]
     ;; Existence is tested separately in integration; the disposition contract
     ;; is exercised against an existing temp path here.
-    (let [source (.toFile
-                  (java.nio.file.Files/createTempDirectory
-                   "tamaki-maint-source"
-                   (make-array java.nio.file.attribute.FileAttribute 0)))
+    (let [source (kio/temp-dir
+                   "tamaki-maint-source")
           project (java.io.File. (.getParentFile source)
                                  (str "." (.getName source)
                                       "-tamaki-actor-codex-1"))
@@ -69,10 +67,8 @@
              @calls)))))
 
 (deftest independent-repository-with-generated-name-is-preserved
-  (let [source (.toFile
-                (java.nio.file.Files/createTempDirectory
-                 "tamaki-maint-independent"
-                 (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [source (kio/temp-dir
+                 "tamaki-maint-independent")
         project (java.io.File. (.getParentFile source)
                                (str "." (.getName source)
                                     "-tamaki-actor-grok-1"))
@@ -89,10 +85,8 @@
   ;; Git resolves a path with no .git by walking up to the first repository
   ;; it finds, so `status` there is a status of the ENCLOSING tree. The
   ;; process seam is armed to fail the test if any git command is issued.
-  (let [source (.toFile
-                (java.nio.file.Files/createTempDirectory
-                 "tamaki-maint-no-git"
-                 (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [source (kio/temp-dir
+                 "tamaki-maint-no-git")
         project (java.io.File. (.getParentFile source)
                                (str "." (.getName source)
                                     "-tamaki-actor-grok-59"))
@@ -112,10 +106,8 @@
     (is (empty? @calls) "no git command was issued for a path git would resolve upward")))
 
 (deftest generated-output-with-missing-source-is-preserved
-  (let [parent (.toFile
-                (java.nio.file.Files/createTempDirectory
-                 "tamaki-maint-missing-parent"
-                 (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [parent (kio/temp-dir
+                 "tamaki-maint-missing-parent")
         source (io/file parent "gone")
         project (io/file parent ".gone-tamaki-actor-codex-1")]
     (.mkdirs project)
@@ -143,9 +135,8 @@
                               {:agent.run/id "dirty"}] 1)))))
 
 (defn- temp-dir [prefix]
-  (.toFile
-   (java.nio.file.Files/createTempDirectory
-    prefix (make-array java.nio.file.attribute.FileAttribute 0))))
+  (kio/temp-dir
+    prefix))
 
 (deftest cleanup-preserves-worktree-when-conflict-inspection-fails
   (let [source (temp-dir "tamaki-maint-inspection-source")

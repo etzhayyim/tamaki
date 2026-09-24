@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.business
   "Durable business KPI and stock/flow projection for Tamaki control loops."
   (:require [kotoba.lang.edn :as edn]
-            [clojure.java.io :as io]))
+            [kotoba.io :as io]))
 
 (def stock-keys
   [:traffic :unique-visitors :qualified-leads :conversations :proposals

@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.actor-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.lang.text :as str]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.actor :as actor]))
@@ -43,9 +43,8 @@
            (:actor/project (actor/read-spec (.getPath file)))))))
 
 (deftest business-targets-are-relative-to-the-private-spec
-  (let [dir (.toFile
-             (java.nio.file.Files/createTempDirectory
-              "tamaki-actor-targets-" (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [dir (kio/temp-dir
+              "tamaki-actor-targets-")
         file (io/file dir "actor.edn")]
     (spit file (pr-str (assoc spec
                               :actor/project "."
@@ -55,9 +54,8 @@
             (actor/read-spec (.getPath file)))))))
 
 (deftest canonical-issue-topology-drives-replica-work
-  (let [dir (.toFile
-             (java.nio.file.Files/createTempDirectory
-              "tamaki-actor-topology-" (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [dir (kio/temp-dir
+              "tamaki-actor-topology-")
         actor-file (io/file dir "actor.edn")
         topology-file (io/file dir "roadmap.edn")
         topology {:topology/issues

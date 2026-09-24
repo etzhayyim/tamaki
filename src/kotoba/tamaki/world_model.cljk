@@ -3,8 +3,8 @@
 
   Models are data.  An LLM may propose typed mutations, but only this
   deterministic evaluator can select a successor and project it to XMILE."
-  (:require [clojure.java.io :as io]
-            [clojure.set :as set]
+  (:require [kotoba.io :as io]
+            [kotoba.lang.coll :as set]
             [kotoba.lang.text :as str]))
 
 (def operators #{:+ :- :* :/ :min :max :abs})
@@ -312,6 +312,6 @@
 
 (defn write-xmile! [model path]
   (let [file (io/file path)]
-    (when-let [parent (.getParentFile file)] (.mkdirs parent))
+    (when-let [parent (io/parent-file file)] (io/mkdirs parent))
     (spit file (to-xmile model))
-    (.getCanonicalPath file)))
+    (io/canonical-path file)))

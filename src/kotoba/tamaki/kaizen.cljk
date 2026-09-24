@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.kaizen
   "Deterministic, output-based evaluation of Tamaki agent loops."
-  (:require [clojure.set :as set]
+  (:require [kotoba.lang.coll :as set]
             [kotoba.tamaki.actor :as actor]))
 
 (def default-window-ms 3600000)

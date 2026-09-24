@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.ao-fleet-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.ao-fleet :as fleet]))
 
@@ -36,10 +36,8 @@
                  "[remote \"rad\"]\n  url = rad://example\n")))))
 
 (deftest fleet-activates-only-local-radicle-ready-aos-within-wip-bound
-  (let [workspace (.toFile
-                   (java.nio.file.Files/createTempDirectory
-                    "tamaki-ao-fleet-"
-                    (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [workspace (kio/temp-dir
+                    "tamaki-ao-fleet-")
         _ (ready-repo! workspace "high" true)
         _ (ready-repo! workspace "medium" true)
         _ (ready-repo! workspace "github-only" false)

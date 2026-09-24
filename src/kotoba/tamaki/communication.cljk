@@ -4,8 +4,8 @@
   Provider bodies, phone numbers, addresses and credentials stay in the local
   transport. The durable topology receives only stable digests, relationships,
   consent state and outcome metadata."
-  (:require [kotoba.lang.text :as str])
-  (:import [java.nio.charset StandardCharsets]
+  (:require [kotoba.bytes :as kbytes] [kotoba.lang.text :as str])
+  (:import
            [java.security MessageDigest]))
 
 (def channels #{:email :message :phone})
@@ -14,7 +14,7 @@
 
 (defn digest [value]
   (let [bytes (.digest (MessageDigest/getInstance "SHA-256")
-                       (.getBytes (str value) StandardCharsets/UTF_8))]
+                       (kbytes/utf8-bytes (str value)))]
     (apply str (map #(format "%02x" (bit-and % 0xff)) bytes))))
 
 (defn communication-id [{:keys [org channel external-id]}]

@@ -5,7 +5,7 @@
   lease. It turns observed stocks and flows into a bounded operating mode and
   an evidence-bearing plan. External economic effects remain HIL-gated."
   (:require [kotoba.lang.edn :as edn]
-            [clojure.java.io :as io]))
+            [kotoba.io :as io]))
 
 (def dimensions
   [:availability :inference-reserve :storage-reserve
@@ -75,7 +75,7 @@
 
 (defn read-policy [path]
   (let [file (io/file path)]
-    (when-not (.isFile file)
+    (when-not (io/file? file)
       (throw (ex-info "Homeostasis policy file not found" {:path path})))
     (edn/read-string (slurp file))))
 

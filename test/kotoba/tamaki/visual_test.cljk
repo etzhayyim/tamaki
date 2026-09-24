@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.visual-test
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.delivery]
             [kotoba.tamaki.visual :as visual]))
@@ -47,10 +47,8 @@
       (finally (.delete file)))))
 
 (deftest fresh-webkit-snapshot-is-preferred-without-screen-capture
-  (let [root (.toFile
-              (java.nio.file.Files/createTempDirectory
-               "tamaki-visual-test"
-               (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+               "tamaki-visual-test")
         dir (java.io.File. root "visual")
         live (java.io.File. dir "live.png")
         called? (atom false)]
@@ -69,10 +67,8 @@
 (deftest undersized-webkit-snapshot-falls-through-to-screen-capture
   ;; A fresh but too-small live.png must not short-circuit capture; otherwise
   ;; the visual loop reports false provider-card degradations forever.
-  (let [root (.toFile
-              (java.nio.file.Files/createTempDirectory
-               "tamaki-visual-undersized"
-               (make-array java.nio.file.attribute.FileAttribute 0)))
+  (let [root (kio/temp-dir
+               "tamaki-visual-undersized")
         dir (java.io.File. root "visual")
         live (java.io.File. dir "live.png")
         calls (atom [])]
@@ -292,10 +288,8 @@
                                 :visual/error "no window"}))))
 
 (deftest window-found-and-screencapture-succeeds-yields-a-screen-capture-image
-  (let [root (.toFile
-              (java.nio.file.Files/createTempDirectory
-               "tamaki-visual-test"
-               (make-array java.nio.file.attribute.FileAttribute 0)))]
+  (let [root (kio/temp-dir
+               "tamaki-visual-test")]
     (with-redefs [kotoba.tamaki.delivery/execute!
                   (fn [argv]
                     (case (first argv)
@@ -311,10 +305,8 @@
         (is (pos? (:visual/bytes result)))))))
 
 (deftest window-found-but-screencapture-failure-is-an-observable-nonfatal-state
-  (let [root (.toFile
-              (java.nio.file.Files/createTempDirectory
-               "tamaki-visual-test"
-               (make-array java.nio.file.attribute.FileAttribute 0)))]
+  (let [root (kio/temp-dir
+               "tamaki-visual-test")]
     (with-redefs [kotoba.tamaki.delivery/execute!
                   (fn [argv]
                     (if (= (first argv) "swift")
