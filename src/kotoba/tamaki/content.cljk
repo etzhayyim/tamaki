@@ -4,7 +4,7 @@
   Creation and analysis are autonomous. Publishing is an external effect and
   remains approval-gated; credentials and provider-specific upload code stay
   outside the public Tamaki repository."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str]))
 

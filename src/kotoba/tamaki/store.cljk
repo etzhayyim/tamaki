@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.store
   "Append-only AgentRun events on local disk or the shared Kotobase Datom plane."
   (:require [json.compat :as json]
-            [clojure.edn :as edn]
+            [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.net URI]

@@ -4,7 +4,7 @@
   A workplace may assign responsibility, project redacted activity, and submit
   typed intents. It does not become the organism's process, memory, lifecycle,
   source, issue, or effect authority."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.nio.channels FileChannel]

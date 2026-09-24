@@ -2,7 +2,7 @@
   "EDN LoopSpec registry: durable agent-loop declarations Tamaki discovers
   and drives. Specs are source of truth; CLI flags are overrides, not
   the primary registration surface."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str]))
 

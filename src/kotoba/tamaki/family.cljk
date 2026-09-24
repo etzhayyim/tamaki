@@ -4,7 +4,7 @@
   GitHub is observed, while the public family spec defines membership and
   invariants. The resulting registry is local runtime state, never a public
   inventory of private work."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io])
   (:import [java.nio.file Files StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))

@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.cli
   (:require [json.compat :as json]
-            [clojure.edn :as edn]
+            [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pprint]
             [kotoba.lang.text :as str]

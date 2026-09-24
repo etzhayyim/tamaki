@@ -4,7 +4,7 @@
   This controller never mines, mints, pays, purchases, or extends a life
   lease. It turns observed stocks and flows into a bounded operating mode and
   an evidence-bearing plan. External economic effects remain HIL-gated."
-  (:require [clojure.edn :as edn]
+  (:require [kotoba.lang.edn :as edn]
             [clojure.java.io :as io]))
 
 (def dimensions
