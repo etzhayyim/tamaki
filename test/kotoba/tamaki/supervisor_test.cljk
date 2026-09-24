@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.supervisor-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.model :as model]
             [kotoba.tamaki.store :as store]
             [kotoba.tamaki.supervisor :as supervisor]))

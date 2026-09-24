@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.visual-test
   (:require [clojure.java.io :as io]
-            [clojure.test :refer [deftest is]]
+            [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.delivery]
             [kotoba.tamaki.visual :as visual]))
 

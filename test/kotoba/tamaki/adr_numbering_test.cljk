@@ -14,7 +14,7 @@
   already-cited, accepted ADR is its own separately reviewable decision --
   but it requires every file that shares a number with another file to say
   so explicitly, so a future collision cannot pass review silently."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [kotoba.lang.text :as str]))
 

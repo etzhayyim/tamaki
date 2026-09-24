@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.business-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.business :as business]))
 
 (def targets

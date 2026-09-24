@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.store-test
   (:require [json.compat :as json]
-            [clojure.test :refer [deftest is]]
+            [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.store :as store]))
 
 (def config {:url "https://example.test"

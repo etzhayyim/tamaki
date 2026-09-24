@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.test-runner
-  (:require [clojure.test :as test]
+  (:require [kotoba.test :as test]
             [kotoba.tamaki.active-inference-test]
             [kotoba.tamaki.ao-fleet-test]
             [kotoba.tamaki.actor-test]

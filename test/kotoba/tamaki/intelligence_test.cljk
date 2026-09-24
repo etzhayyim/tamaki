@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.intelligence-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.intelligence :as intelligence]))
 
 (deftest blocker-graph-gates-selection

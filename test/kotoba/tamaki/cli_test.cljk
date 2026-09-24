@@ -1,7 +1,7 @@
 (ns kotoba.tamaki.cli-test
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.test :refer [deftest is testing]]
+            [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.adapters :as adapters]
             [kotoba.tamaki.cli :as cli]
             [kotoba.tamaki.delivery :as delivery]

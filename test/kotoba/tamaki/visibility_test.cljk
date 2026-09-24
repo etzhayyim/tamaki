@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.visibility-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.visibility :as visibility]))
 
 (deftest organism-visibility-policy
