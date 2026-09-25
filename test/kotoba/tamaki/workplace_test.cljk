@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.workplace-test
   (:require [kotoba.io :as kio] [kotoba.lang.edn :as edn]
-            [clojure.java.io :as io]
+            [kotoba.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.workplace :as workplace]))
 
@@ -46,7 +46,7 @@
 (defn- write-envelope! [root envelope]
   (let [directory (workplace/inbox-directory root)
         file (io/file directory (str (:intent/id envelope) ".edn"))]
-    (.mkdirs directory)
+    (io/mkdirs directory)
     (spit file (pr-str envelope))
     envelope))
 

@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.world-model-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.world-model :as world-model]
             [xmile.validate :as xmile-validate]
             [xmile.xml :as xmile-xml]))
@@ -91,14 +91,14 @@
 (deftest unknown-references-and-operators-fail-closed
   (testing "dangling causal reference"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"dangling references"
+         kerror/ExceptionInfo #"dangling references"
          (world-model/validate
           (assoc-in incumbent
                     [:world-model/variables :accepted-change :equation]
                     [:* :learning-rate :imaginary-signal])))))
   (testing "arbitrary code cannot enter the expression language"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"Unsupported world-model operator"
+         kerror/ExceptionInfo #"Unsupported world-model operator"
          (world-model/validate
           (assoc-in incumbent
                     [:world-model/variables :accepted-change :equation]
@@ -107,7 +107,7 @@
 (deftest physical-and-parameter-constraints-fail-closed
   (testing "a stock cannot silently accumulate an auxiliary with wrong units"
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo #"Flow units must match"
+         kerror/ExceptionInfo #"Flow units must match"
          (world-model/validate
           (assoc-in incumbent
                     [:world-model/variables :accepted-change :units]

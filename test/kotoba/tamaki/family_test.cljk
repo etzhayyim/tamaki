@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.family-test
-  (:require [kotoba.io :as kio] [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.io :as kio] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.family :as family]))
 
 (def spec
@@ -35,7 +35,7 @@
 
 (deftest family-refuses-repositories-outside-its-organization
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"outside"
        (family/projection
         spec

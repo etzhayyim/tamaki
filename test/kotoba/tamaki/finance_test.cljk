@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.finance-test
-  (:require [kotoba.test :refer [deftest is]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.finance :as finance]))
 
 (deftest accounting-observation-requires-a-balanced-bs
@@ -9,7 +9,7 @@
                           :bs {:assets 100 :liabilities 40 :equity 60}}
                          1))))
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo #"does not balance"
+       kerror/ExceptionInfo #"does not balance"
        (finance/event {:org :example :period "2026-07"
                        :bs {:assets 100 :liabilities 40 :equity 50}}
                       1)))
@@ -42,7 +42,7 @@
   ;; The floating-point tolerance must not be so loose that it swallows a
   ;; real accounting error just because the totals are large.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo #"does not balance"
+       kerror/ExceptionInfo #"does not balance"
        (finance/event {:org :example :period "2026-07"
                        :bs {:assets 123456789.12 :liabilities 87654321.34
                             :equity 35802467.79}}
@@ -58,7 +58,7 @@
   ;; An empty string is truthy in Clojure, so a bare `(:period observation)`
   ;; check alone would silently accept it as a valid reporting period.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires :period"
        (finance/event {:org :example :period ""
                        :bs {:assets 10 :liabilities 0 :equity 10}}
@@ -67,7 +67,7 @@
 (deftest whitespace-only-period-is-rejected
   ;; Same hazard as an empty string: whitespace alone is not a real period.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires :period"
        (finance/event {:org :example :period "   "
                        :bs {:assets 10 :liabilities 0 :equity 10}}
@@ -75,7 +75,7 @@
 
 (deftest missing-period-is-rejected
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires :period"
        (finance/event {:org :example} 1))))
 
@@ -83,7 +83,7 @@
   ;; Neither :org nor :owner/:ref is present — the combined identity check
   ;; fires before the type guards.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires :period and :org"
        (finance/event {:period "2026-07"} 1))))
 
@@ -92,13 +92,13 @@
   ;; `event` when `clojure.core/name` is called on it. The type guard turns
   ;; that opaque ClassCastException into an actionable validation error.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #":org must be a keyword"
        (finance/event {:org 123 :period "2026-07"} 1))))
 
 (deftest non-nameable-owner-ref-is-rejected-with-a-clear-message
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #":owner/:ref must be a keyword"
        (finance/event {:owner {:ref 123} :period "2026-07"} 1))))
 

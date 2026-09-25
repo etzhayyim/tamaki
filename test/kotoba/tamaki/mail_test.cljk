@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.mail-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.mail :as mail]))
 
 (deftest governed-mail-decisions
@@ -67,7 +67,7 @@
   ;; The command boundary must fail closed before any transport sees a request
   ;; without a durable org identity.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:account :support :action :mail/search}))))
 
@@ -75,26 +75,26 @@
   ;; An empty string is truthy in Clojure, so a bare org check alone would
   ;; silently accept it; nameable blank strings must still fail closed.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org "" :account :support :action :mail/search})))
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org "   " :account :support :action :mail/search}))))
 
 (deftest missing-or-blank-account-is-rejected
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org :private-example :action :mail/search})))
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org :private-example :account ""
                       :action :mail/search})))
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org :private-example :account "   "
                       :action :mail/search}))))
@@ -104,11 +104,11 @@
   ;; `(name org)` with an opaque ClassCastException. The type guard turns
   ;; that into the same actionable validation error as a missing org.
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org 123 :account :support :action :mail/search})))
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"requires org and account"
        (mail/command {:org {:id :private} :account :support
                       :action :mail/search}))))

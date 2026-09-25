@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.ao-fleet-test
-  (:require [kotoba.io :as kio] [clojure.java.io :as io]
+  (:require [kotoba.lang.error :as kerror] [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is]]
             [kotoba.tamaki.ao-fleet :as fleet]))
 
@@ -77,7 +77,7 @@
 
 (deftest policy-refuses-autonomous-integration
   (is (thrown-with-msg?
-       clojure.lang.ExceptionInfo
+       kerror/ExceptionInfo
        #"approval-required"
        (fleet/validate-policy!
         (assoc-in policy [:ao.fleet/authority :integrate] :autonomous)))))

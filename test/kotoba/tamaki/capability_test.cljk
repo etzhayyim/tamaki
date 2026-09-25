@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.capability-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.actor :as actor]
             [kotoba.tamaki.capability :as capability]))
 
@@ -101,6 +101,6 @@
               :actor/scale {:min 0 :desired 1 :max 1}
               :actor/runners [{:runner :kototama :weight 1}]}]
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo
+         kerror/ExceptionInfo
          #"capability contract rejected"
          (actor/validate-spec spec)))))

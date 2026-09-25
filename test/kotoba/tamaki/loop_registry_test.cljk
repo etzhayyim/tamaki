@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.loop-registry-test
-  (:require [kotoba.io :as kio] [clojure.java.io :as io]
+  (:require [kotoba.lang.error :as kerror] [kotoba.io :as kio] [clojure.java.io :as io]
             [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.loop :as loop]
             [kotoba.tamaki.loop-registry :as reg]))
@@ -41,7 +41,7 @@
                   :loop/project "/tmp"
                   :loop/intervl-ms 1000})
                 nil
-                (catch clojure.lang.ExceptionInfo e e))]
+                (catch kerror/ExceptionInfo e e))]
     (is (= "LoopSpec contains unknown keys" (ex-message error)))
     (is (= [:loop/intervl-ms] (:unknown-keys (ex-data error))))))
 
