@@ -1,6 +1,6 @@
 (ns kotoba.tamaki.adapters
   "Command adapters for the existing Kotoba runtimes."
-  (:require [clojure.java.io :as io]
+  (:require [kotoba.io :as io]
             [kotoba.lang.text :as str]
             [kotoba.tamaki.store :as store])
   (:import [java.util.concurrent TimeUnit]))
@@ -10,10 +10,10 @@
       (System/getenv "TAMAKI_WORKSPACE")
       (System/getenv "COM_JUNKAWASAKI_ROOT")
       (-> (io/file (System/getProperty "user.dir"))
-          .getAbsoluteFile
-          .getParentFile
-          .getParentFile
-          .getParent)))
+          io/absolute-file
+          io/parent-file
+          io/parent-file
+          io/parent)))
 
 (defn sibling
   [name]
@@ -21,7 +21,7 @@
 
 (defn executable? [path]
   (let [f (io/file path)]
-    (and (.exists f) (.canExecute f))))
+    (and (io/exists? f) (io/can-execute? f))))
 
 (defn command-exists?
   [command]
@@ -135,8 +135,8 @@
      :capability-contract {:ok? (shared-contract-ready?)
                            :namespaces required-shared-namespaces}
      :kotoba-code {:ok? (executable? kc) :path kc}
-     :kotoba-fleet {:ok? (.exists (io/file fleet)) :path fleet}
-     :murakumo {:ok? (.exists (io/file murakumo)) :path murakumo}
+     :kotoba-fleet {:ok? (io/exists? (io/file fleet)) :path fleet}
+     :murakumo {:ok? (io/exists? (io/file murakumo)) :path murakumo}
      :event-store (store/readiness)}))
 
 (defn ready-for?

@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.telemetry-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.telemetry :as telemetry]))
 
 (deftest snapshot-mapping-preserves-facts-and-freshness
@@ -109,7 +109,7 @@
   (let [file (java.io.File/createTempFile "tamaki-no-domain-" ".edn")]
     (spit file (pr-str {:as-of "2026-07-25" :value 1}))
     (is (thrown-with-msg?
-         clojure.lang.ExceptionInfo
+         kerror/ExceptionInfo
          #"Collector requires :collector/domain"
          (telemetry/collect
           {:collector/id :missing-domain

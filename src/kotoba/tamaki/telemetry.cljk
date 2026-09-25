@@ -3,7 +3,7 @@
 
   Provider credentials and concrete mappings live in the local control plane."
   (:require [kotoba.lang.edn :as edn]
-            [clojure.java.io :as io]
+            [kotoba.io :as io]
             [kotoba.lang.text :as str])
   (:import [java.time Instant LocalDate ZoneOffset]
            [java.time.format DateTimeParseException]))
@@ -12,17 +12,17 @@
   (edn/read-string (slurp (io/file path))))
 
 (defn read-spec [path]
-  (let [file (.getCanonicalFile (io/file path))
+  (let [file (io/canonical-file (io/file path))
         spec (read-edn file)
         source (:collector/source spec)
         root-env (:collector/source-root-env spec)
         root (when root-env (System/getenv root-env))
         source-file (cond
                       (and root source) (io/file root source)
-                      source (io/file (.getParentFile file) source))]
+                      source (io/file (io/parent-file file) source))]
     (cond-> spec
       source-file (assoc :collector/source
-                         (.getCanonicalPath source-file)))))
+                         (io/canonical-path source-file)))))
 
 (defn- value-at [snapshot selector]
   (cond

@@ -1,5 +1,5 @@
 (ns kotoba.tamaki.business-test
-  (:require [kotoba.test :refer [deftest is testing]]
+  (:require [kotoba.lang.error :as kerror] [kotoba.test :refer [deftest is testing]]
             [kotoba.tamaki.business :as business]))
 
 (def targets
@@ -107,7 +107,7 @@
     (try
       (spit file (pr-str [:target/mrr-jpy 1000000]))
       (is (thrown-with-msg?
-           clojure.lang.ExceptionInfo #"must be an EDN map"
+           kerror/ExceptionInfo #"must be an EDN map"
            (business/read-targets (.getAbsolutePath file))))
       (finally (.delete file)))))
 
