@@ -82,7 +82,7 @@
         cp (str (io/file fleet "src") ":"
                 (io/file fleet "hosts" "nbb"))]
     ["nbb" "--classpath" cp
-     (str (io/file fleet "bin" "fleet-sandbox-dispatch.cljs"))
+     (str (io/file fleet "bin" "fleet-sandbox-dispatch.cljk"))
      "--work" work-file
      "--agent" (str "tamaki-" (:agent.run/id run))
      "--node" (name (:agent.run/node run))
@@ -94,7 +94,7 @@
         cp (str (io/file fleet "src") ":"
                 (io/file fleet "hosts" "nbb"))]
     (into ["nbb" "--classpath" cp
-           (str (io/file fleet "bin" (str "fleet-" tool ".cljs")))]
+           (str (io/file fleet "bin" (str "fleet-" tool ".cljk")))]
           args)))
 
 (defn murakumo-command
@@ -124,7 +124,7 @@
 (defn readiness []
   (let [kc (str (io/file (sibling "kotoba-code") "bin" "kotoba-code"))
         fleet (str (io/file (sibling "kotoba-fleet") "bin"
-                            "fleet-sandbox-dispatch.cljs"))
+                            "fleet-sandbox-dispatch.cljk"))
         murakumo (sibling "murakumo")]
     {:tamaki {:ok? true}
      :bb {:ok? (command-exists? "bb")}
