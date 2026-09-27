@@ -23,7 +23,7 @@
         nodes (adapters/fleet-tool-command "nodes" ["--nodes" "a,b"])]
     (is (= "murakumo.infer" (nth infer 4)))
     (is (= ["plan" "model-a"] (subvec (vec infer) 5)))
-    (is (re-find #"fleet-nodes\.cljs$" (nth nodes 3)))
+    (is (re-find #"fleet-nodes\.cljk$" (nth nodes 3)))
     (is (= ["--nodes" "a,b"] (subvec (vec nodes) 4)))))
 
 (deftest local-resume-routes-through-kotoba-code
